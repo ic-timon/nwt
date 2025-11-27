@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, Button, Typography, Space, Alert, Spin, Descriptions, message } from 'antd'
 import { WifiOutlined, ReloadOutlined } from '@ant-design/icons'
 import './App.css'
@@ -10,6 +10,10 @@ function App() {
   const [isDetecting, setIsDetecting] = useState(false)
   const [networkType, setNetworkType] = useState<string>('')
   const [networkDetails, setNetworkDetails] = useState<any>(null)
+
+  useEffect(() => {
+    detectNetworkType()
+  }, [])
 
   const detectNetworkType = async () => {
     setIsDetecting(true)
@@ -46,9 +50,7 @@ function App() {
             <Title level={2}>
               <WifiOutlined /> 网络类型检测工具
             </Title>
-            <Text type="secondary">
-              检测您的网络类型，包括公网型网络、全锥型NAT、受限网络和防火墙阻断网络
-            </Text>
+
           </Space>
         </Card>
 
@@ -111,21 +113,7 @@ function App() {
           </Space>
         </Card>
 
-        <Card title="网络类型说明">
-          <Space orientation="vertical" size="small">
-            <Text strong>公网型网络</Text>
-            <Text type="secondary">您的设备拥有公网IP地址，可以直接被外部访问</Text>
-            
-            <Text strong>全锥型NAT</Text>
-            <Text type="secondary">外部设备可以通过任何端口访问您的设备</Text>
-            
-            <Text strong>受限网络</Text>
-            <Text type="secondary">包括受限锥型NAT、端口受限锥型NAT、对称型NAT和VPN/代理网络</Text>
-            
-            <Text strong>防火墙阻断网络</Text>
-            <Text type="secondary">网络连接被防火墙完全阻断</Text>
-          </Space>
-        </Card>
+
       </Space>
     </div>
   )
