@@ -78,7 +78,7 @@ function App() {
             {networkType && !isDetecting && (
               <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
                 <Alert
-                  message={`检测结果：${networkType}`}
+                  title={`检测结果：${networkType}`}
                   type={
                     networkType === '公网型网络' ? 'success' :
                     networkType === '全锥型NAT' ? 'info' :
