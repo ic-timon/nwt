@@ -23,6 +23,14 @@ interface SpeedTestResult {
   status: 'success' | 'failed';
   packetsSent: number;
   packetsReceived: number;
+  // 映射地址标识
+  mappedAddress: {
+    ip: string;
+    port: number;
+    server: string;
+    protocol: 'UDP' | 'TCP';
+    ipVersion: 'IPv4' | 'IPv6';
+  };
 }
 
 interface NetworkDetectionResult {
@@ -51,8 +59,8 @@ interface NetworkDetectionResult {
     tcpNatType: string | null;
     udpCanConnect: boolean;
     tcpCanConnect: boolean;
-    // 连通性和速度测试结果
-    speedTest: SpeedTestResult | null;
+    // 连通性和速度测试结果（为每个映射地址分别测试）
+    speedTests: SpeedTestResult[];
   };
 }
 
@@ -135,25 +143,99 @@ class StunClient {
     const ipv6UdpCanConnect = ipv6UdpResult !== null;
     const ipv6TcpCanConnect = ipv6TcpResult !== null;
     
-    // 8. 如果连接成功，执行连通性和速度测试
-    let speedTestResult: SpeedTestResult | null = null;
+    // 8. 为每个检测到的映射地址分别执行连通性和速度测试
+    const speedTests: SpeedTestResult[] = [];
+    
     if (reachableServers.length > 0 && (udpCanConnect || tcpCanConnect)) {
-      try {
-        console.log('开始执行连通性和速度测试...');
-        speedTestResult = await this.performSpeedTest();
-        console.log('连通性和速度测试完成:', speedTestResult);
-      } catch (error) {
-        console.error('连通性和速度测试失败:', error);
-        speedTestResult = {
-          latency: 0,
-          throughput: 0,
-          packetLoss: 100,
-          connectionTime: 0,
-          status: 'failed',
-          packetsSent: 0,
-          packetsReceived: 0
-        };
+      // 收集所有检测到的映射地址
+      const mappedAddresses: Array<{
+        ip: string;
+        port: number;
+        server: string;
+        protocol: 'UDP' | 'TCP';
+        ipVersion: 'IPv4' | 'IPv6';
+      }> = [];
+
+      // 收集IPv4 UDP映射地址
+      if (ipv4UdpResult && ipv4UdpResult.mappedAddresses.length > 0) {
+        ipv4UdpResult.mappedAddresses.forEach(addr => {
+          mappedAddresses.push({
+            ip: addr.ip,
+            port: addr.port,
+            server: addr.server,
+            protocol: 'UDP',
+            ipVersion: 'IPv4'
+          });
+        });
       }
+
+      // 收集IPv4 TCP映射地址
+      if (ipv4TcpResult && ipv4TcpResult.mappedAddresses.length > 0) {
+        ipv4TcpResult.mappedAddresses.forEach(addr => {
+          mappedAddresses.push({
+            ip: addr.ip,
+            port: addr.port,
+            server: addr.server,
+            protocol: 'TCP',
+            ipVersion: 'IPv4'
+          });
+        });
+      }
+
+      // 收集IPv6 UDP映射地址
+      if (ipv6UdpResult && ipv6UdpResult.mappedAddresses.length > 0) {
+        ipv6UdpResult.mappedAddresses.forEach(addr => {
+          mappedAddresses.push({
+            ip: addr.ip,
+            port: addr.port,
+            server: addr.server,
+            protocol: 'UDP',
+            ipVersion: 'IPv6'
+          });
+        });
+      }
+
+      // 收集IPv6 TCP映射地址
+      if (ipv6TcpResult && ipv6TcpResult.mappedAddresses.length > 0) {
+        ipv6TcpResult.mappedAddresses.forEach(addr => {
+          mappedAddresses.push({
+            ip: addr.ip,
+            port: addr.port,
+            server: addr.server,
+            protocol: 'TCP',
+            ipVersion: 'IPv6'
+          });
+        });
+      }
+
+      console.log(`检测到 ${mappedAddresses.length} 个映射地址，开始分别进行测速测试...`);
+
+      // 为每个映射地址执行测速（并行执行以提高效率）
+      const speedTestPromises = mappedAddresses.map(async (mappedAddr) => {
+        try {
+          console.log(`开始为 ${mappedAddr.ip}:${mappedAddr.port} (${mappedAddr.ipVersion} ${mappedAddr.protocol}, ${mappedAddr.server}) 进行测速...`);
+          const result = await this.performSpeedTest(mappedAddr);
+          console.log(`测速完成: ${mappedAddr.ip}:${mappedAddr.port}`, result);
+          return result;
+        } catch (error) {
+          console.error(`测速失败: ${mappedAddr.ip}:${mappedAddr.port}`, error);
+          return {
+            latency: 0,
+            throughput: 0,
+            packetLoss: 100,
+            connectionTime: 0,
+            status: 'failed' as const,
+            packetsSent: 0,
+            packetsReceived: 0,
+            mappedAddress: mappedAddr
+          };
+        }
+      });
+
+      const results = await Promise.all(speedTestPromises);
+      speedTests.push(...results);
+      
+      console.log(`所有测速测试完成，共 ${speedTests.length} 个结果`);
     }
     
     return {
@@ -182,8 +264,8 @@ class StunClient {
         tcpNatType,
         udpCanConnect,
         tcpCanConnect,
-        // 连通性和速度测试结果
-        speedTest: speedTestResult
+        // 连通性和速度测试结果（为每个映射地址分别测试）
+        speedTests
       }
     };
   }
@@ -947,8 +1029,15 @@ class StunClient {
 
   /**
    * 执行连通性和速度测试（本地回环测试）
+   * @param mappedAddress 要测试的映射地址信息
    */
-  async performSpeedTest(): Promise<SpeedTestResult> {
+  async performSpeedTest(mappedAddress: {
+    ip: string;
+    port: number;
+    server: string;
+    protocol: 'UDP' | 'TCP';
+    ipVersion: 'IPv4' | 'IPv6';
+  }): Promise<SpeedTestResult> {
     return new Promise((resolve) => {
       const startTime = Date.now();
       let connectionStartTime = startTime;
@@ -1008,14 +1097,19 @@ class StunClient {
         }
       };
 
-      const finish = (result: SpeedTestResult) => {
+      const finish = (result: Omit<SpeedTestResult, 'mappedAddress'>) => {
         cleanup();
-        resolve(result);
+        resolve({
+          ...result,
+          mappedAddress
+        });
       };
 
-      // 使用第一个可用的STUN服务器
-      const stunServer = this.stunServers.length > 0 ? this.stunServers[0] : null;
+      // 使用指定映射地址对应的STUN服务器
+      const stunServer = this.stunServers.find(s => s.name === mappedAddress.server) || this.stunServers[0];
       const iceServers = stunServer ? [{ urls: stunServer.url }] : [];
+      
+      console.log(`开始为映射地址 ${mappedAddress.ip}:${mappedAddress.port} (${mappedAddress.ipVersion} ${mappedAddress.protocol}, ${mappedAddress.server}) 进行测速测试`);
 
       // 创建两个RTCPeerConnection
       pc1 = new RTCPeerConnection({ iceServers });
@@ -1178,7 +1272,7 @@ class StunClient {
           ? ((packets.sent - packets.received) / packets.sent) * 100 
           : 100;
 
-        console.log('测速结果:', {
+        console.log(`测速结果 (${mappedAddress.ip}:${mappedAddress.port} ${mappedAddress.ipVersion} ${mappedAddress.protocol}):`, {
           latency: avgLatency.toFixed(2),
           throughput: throughput.toFixed(2),
           packetLoss: packetLoss.toFixed(2),

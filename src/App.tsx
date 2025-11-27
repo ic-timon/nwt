@@ -139,11 +139,36 @@ function App() {
                                   {networkDetails.details.ipv4.udp.mappedAddresses.length > 0 && (
                                     <div style={{ marginTop: '8px' }}>
                                       <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
-                                      {networkDetails.details.ipv4.udp.mappedAddresses.map((addr: any, idx: number) => (
-                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
-                                          {addr.server}: {addr.ip}:{addr.port}
-                                        </div>
-                                      ))}
+                                      {networkDetails.details.ipv4.udp.mappedAddresses.map((addr: any, idx: number) => {
+                                        // 查找对应的测速结果
+                                        const speedTest = networkDetails.details?.speedTests?.find((st: any) => 
+                                          st.mappedAddress.ip === addr.ip && 
+                                          st.mappedAddress.port === addr.port &&
+                                          st.mappedAddress.server === addr.server &&
+                                          st.mappedAddress.protocol === 'UDP' &&
+                                          st.mappedAddress.ipVersion === 'IPv4'
+                                        );
+                                        return (
+                                          <div key={idx} style={{ fontSize: '12px', marginLeft: '16px', marginTop: '4px' }}>
+                                            <div>{addr.server}: {addr.ip}:{addr.port}</div>
+                                            {speedTest && (
+                                              <div style={{ marginLeft: '16px', marginTop: '4px', padding: '4px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                                                <Text type="secondary" style={{ fontSize: '11px' }}>测速结果：</Text>
+                                                <div style={{ fontSize: '11px' }}>
+                                                  延迟: {speedTest.latency > 0 ? `${speedTest.latency}ms` : '未测量'} | 
+                                                  吞吐量: {speedTest.throughput > 0 ? `${speedTest.throughput}KB/s` : '未测量'} | 
+                                                  丢包率: {speedTest.packetLoss >= 0 ? `${speedTest.packetLoss}%` : '未测量'}
+                                                  {speedTest.status === 'success' ? (
+                                                    <Text type="success" style={{ marginLeft: '4px' }}>✓</Text>
+                                                  ) : (
+                                                    <Text type="error" style={{ marginLeft: '4px' }}>✗</Text>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </Space>
@@ -165,11 +190,36 @@ function App() {
                                   {networkDetails.details.ipv4.tcp.mappedAddresses.length > 0 && (
                                     <div style={{ marginTop: '8px' }}>
                                       <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
-                                      {networkDetails.details.ipv4.tcp.mappedAddresses.map((addr: any, idx: number) => (
-                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
-                                          {addr.server}: {addr.ip}:{addr.port}
-                                        </div>
-                                      ))}
+                                      {networkDetails.details.ipv4.tcp.mappedAddresses.map((addr: any, idx: number) => {
+                                        // 查找对应的测速结果
+                                        const speedTest = networkDetails.details?.speedTests?.find((st: any) => 
+                                          st.mappedAddress.ip === addr.ip && 
+                                          st.mappedAddress.port === addr.port &&
+                                          st.mappedAddress.server === addr.server &&
+                                          st.mappedAddress.protocol === 'TCP' &&
+                                          st.mappedAddress.ipVersion === 'IPv4'
+                                        );
+                                        return (
+                                          <div key={idx} style={{ fontSize: '12px', marginLeft: '16px', marginTop: '4px' }}>
+                                            <div>{addr.server}: {addr.ip}:{addr.port}</div>
+                                            {speedTest && (
+                                              <div style={{ marginLeft: '16px', marginTop: '4px', padding: '4px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                                                <Text type="secondary" style={{ fontSize: '11px' }}>测速结果：</Text>
+                                                <div style={{ fontSize: '11px' }}>
+                                                  延迟: {speedTest.latency > 0 ? `${speedTest.latency}ms` : '未测量'} | 
+                                                  吞吐量: {speedTest.throughput > 0 ? `${speedTest.throughput}KB/s` : '未测量'} | 
+                                                  丢包率: {speedTest.packetLoss >= 0 ? `${speedTest.packetLoss}%` : '未测量'}
+                                                  {speedTest.status === 'success' ? (
+                                                    <Text type="success" style={{ marginLeft: '4px' }}>✓</Text>
+                                                  ) : (
+                                                    <Text type="error" style={{ marginLeft: '4px' }}>✗</Text>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </Space>
@@ -197,11 +247,36 @@ function App() {
                                   {networkDetails.details.ipv6.udp.mappedAddresses.length > 0 && (
                                     <div style={{ marginTop: '8px' }}>
                                       <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
-                                      {networkDetails.details.ipv6.udp.mappedAddresses.map((addr: any, idx: number) => (
-                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
-                                          {addr.server}: {addr.ip}:{addr.port}
-                                        </div>
-                                      ))}
+                                      {networkDetails.details.ipv6.udp.mappedAddresses.map((addr: any, idx: number) => {
+                                        // 查找对应的测速结果
+                                        const speedTest = networkDetails.details?.speedTests?.find((st: any) => 
+                                          st.mappedAddress.ip === addr.ip && 
+                                          st.mappedAddress.port === addr.port &&
+                                          st.mappedAddress.server === addr.server &&
+                                          st.mappedAddress.protocol === 'UDP' &&
+                                          st.mappedAddress.ipVersion === 'IPv6'
+                                        );
+                                        return (
+                                          <div key={idx} style={{ fontSize: '12px', marginLeft: '16px', marginTop: '4px' }}>
+                                            <div>{addr.server}: {addr.ip}:{addr.port}</div>
+                                            {speedTest && (
+                                              <div style={{ marginLeft: '16px', marginTop: '4px', padding: '4px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                                                <Text type="secondary" style={{ fontSize: '11px' }}>测速结果：</Text>
+                                                <div style={{ fontSize: '11px' }}>
+                                                  延迟: {speedTest.latency > 0 ? `${speedTest.latency}ms` : '未测量'} | 
+                                                  吞吐量: {speedTest.throughput > 0 ? `${speedTest.throughput}KB/s` : '未测量'} | 
+                                                  丢包率: {speedTest.packetLoss >= 0 ? `${speedTest.packetLoss}%` : '未测量'}
+                                                  {speedTest.status === 'success' ? (
+                                                    <Text type="success" style={{ marginLeft: '4px' }}>✓</Text>
+                                                  ) : (
+                                                    <Text type="error" style={{ marginLeft: '4px' }}>✗</Text>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </Space>
@@ -223,11 +298,36 @@ function App() {
                                   {networkDetails.details.ipv6.tcp.mappedAddresses.length > 0 && (
                                     <div style={{ marginTop: '8px' }}>
                                       <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
-                                      {networkDetails.details.ipv6.tcp.mappedAddresses.map((addr: any, idx: number) => (
-                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
-                                          {addr.server}: {addr.ip}:{addr.port}
-                                        </div>
-                                      ))}
+                                      {networkDetails.details.ipv6.tcp.mappedAddresses.map((addr: any, idx: number) => {
+                                        // 查找对应的测速结果
+                                        const speedTest = networkDetails.details?.speedTests?.find((st: any) => 
+                                          st.mappedAddress.ip === addr.ip && 
+                                          st.mappedAddress.port === addr.port &&
+                                          st.mappedAddress.server === addr.server &&
+                                          st.mappedAddress.protocol === 'TCP' &&
+                                          st.mappedAddress.ipVersion === 'IPv6'
+                                        );
+                                        return (
+                                          <div key={idx} style={{ fontSize: '12px', marginLeft: '16px', marginTop: '4px' }}>
+                                            <div>{addr.server}: {addr.ip}:{addr.port}</div>
+                                            {speedTest && (
+                                              <div style={{ marginLeft: '16px', marginTop: '4px', padding: '4px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                                                <Text type="secondary" style={{ fontSize: '11px' }}>测速结果：</Text>
+                                                <div style={{ fontSize: '11px' }}>
+                                                  延迟: {speedTest.latency > 0 ? `${speedTest.latency}ms` : '未测量'} | 
+                                                  吞吐量: {speedTest.throughput > 0 ? `${speedTest.throughput}KB/s` : '未测量'} | 
+                                                  丢包率: {speedTest.packetLoss >= 0 ? `${speedTest.packetLoss}%` : '未测量'}
+                                                  {speedTest.status === 'success' ? (
+                                                    <Text type="success" style={{ marginLeft: '4px' }}>✓</Text>
+                                                  ) : (
+                                                    <Text type="error" style={{ marginLeft: '4px' }}>✗</Text>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                   )}
                                 </Space>
@@ -245,50 +345,64 @@ function App() {
                           </Descriptions>
                         </Card>
 
-                        {/* 连通性测试结果 */}
-                        {networkDetails.details?.speedTest && (
-                          <Card size="small" title="连通性测试">
-                            <Descriptions column={1} size="small" bordered>
-                              <Descriptions.Item label="测试状态">
-                                {networkDetails.details.speedTest.status === 'success' ? (
-                                  <Text type="success">成功</Text>
-                                ) : (
-                                  <Text type="error">失败</Text>
-                                )}
-                              </Descriptions.Item>
-                              <Descriptions.Item label="连接建立时间">
-                                {networkDetails.details.speedTest.connectionTime} ms
-                              </Descriptions.Item>
-                              <Descriptions.Item label="延迟 (RTT)">
-                                {networkDetails.details.speedTest.latency > 0 ? (
-                                  <Text>{networkDetails.details.speedTest.latency} ms</Text>
-                                ) : (
-                                  <Text type="secondary">未测量</Text>
-                                )}
-                              </Descriptions.Item>
-                              <Descriptions.Item label="吞吐量">
-                                {networkDetails.details.speedTest.throughput > 0 ? (
-                                  <Text>{networkDetails.details.speedTest.throughput} KB/s</Text>
-                                ) : (
-                                  <Text type="secondary">未测量</Text>
-                                )}
-                              </Descriptions.Item>
-                              <Descriptions.Item label="丢包率">
-                                {networkDetails.details.speedTest.packetLoss >= 0 ? (
-                                  <Text type={networkDetails.details.speedTest.packetLoss > 10 ? 'warning' : 'success'}>
-                                    {networkDetails.details.speedTest.packetLoss}%
-                                  </Text>
-                                ) : (
-                                  <Text type="secondary">未测量</Text>
-                                )}
-                              </Descriptions.Item>
-                              <Descriptions.Item label="数据包统计">
-                                <Text>
-                                  发送: {networkDetails.details.speedTest.packetsSent} 个, 
-                                  接收: {networkDetails.details.speedTest.packetsReceived} 个
-                                </Text>
-                              </Descriptions.Item>
-                            </Descriptions>
+                        {/* 连通性测试结果汇总 */}
+                        {networkDetails.details?.speedTests && networkDetails.details.speedTests.length > 0 && (
+                          <Card size="small" title="连通性测试汇总">
+                            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                              {networkDetails.details.speedTests.map((speedTest: any, idx: number) => (
+                                <Card 
+                                  key={idx} 
+                                  size="small" 
+                                  title={`${speedTest.mappedAddress.ipVersion} ${speedTest.mappedAddress.protocol} - ${speedTest.mappedAddress.server}`}
+                                  style={{ backgroundColor: speedTest.status === 'success' ? '#f6ffed' : '#fff1f0' }}
+                                >
+                                  <Descriptions column={1} size="small" bordered>
+                                    <Descriptions.Item label="映射地址">
+                                      <Text strong>{speedTest.mappedAddress.ip}:{speedTest.mappedAddress.port}</Text>
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="测试状态">
+                                      {speedTest.status === 'success' ? (
+                                        <Text type="success">成功</Text>
+                                      ) : (
+                                        <Text type="error">失败</Text>
+                                      )}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="连接建立时间">
+                                      {speedTest.connectionTime} ms
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="延迟 (RTT)">
+                                      {speedTest.latency > 0 ? (
+                                        <Text>{speedTest.latency} ms</Text>
+                                      ) : (
+                                        <Text type="secondary">未测量</Text>
+                                      )}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="吞吐量">
+                                      {speedTest.throughput > 0 ? (
+                                        <Text>{speedTest.throughput} KB/s</Text>
+                                      ) : (
+                                        <Text type="secondary">未测量</Text>
+                                      )}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="丢包率">
+                                      {speedTest.packetLoss >= 0 ? (
+                                        <Text type={speedTest.packetLoss > 10 ? 'warning' : 'success'}>
+                                          {speedTest.packetLoss}%
+                                        </Text>
+                                      ) : (
+                                        <Text type="secondary">未测量</Text>
+                                      )}
+                                    </Descriptions.Item>
+                                    <Descriptions.Item label="数据包统计">
+                                      <Text>
+                                        发送: {speedTest.packetsSent} 个, 
+                                        接收: {speedTest.packetsReceived} 个
+                                      </Text>
+                                    </Descriptions.Item>
+                                  </Descriptions>
+                                </Card>
+                              ))}
+                            </Space>
                           </Card>
                         )}
                       </>
