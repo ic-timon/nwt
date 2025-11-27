@@ -21,8 +21,11 @@ interface NetworkDetectionResult {
 }
 
 class StunClient {
+  // 注意：为了更准确地检测NAT类型（特别是对称型NAT），建议使用至少2个不同的STUN服务器
+  // 对称型NAT的检测需要比较不同服务器返回的映射端口是否一致
   private stunServers: StunServer[] = [
     { url: 'stun:stun.miwifi.com:3478', host: 'stun.miwifi.com', port: 3478, name: 'stun.miwifi.com' },
+    { url: 'stun:stun.l.google.com:19302', host: 'stun.l.google.com', port: 19302, name: 'stun.l.google.com' },
   ];
 
   /**
@@ -51,10 +54,14 @@ class StunClient {
       } else {
         networkType = '受限网络';
       }
-    } else if (natType === 'Full Cone') {
-      networkType = '全锥型NAT';
+    } else if (natType === 'Full Cone or Restricted Cone') {
+      networkType = '全锥型/受限锥型NAT';
+    } else if (natType === 'Restricted Cone') {
+      networkType = '受限锥型NAT';
+    } else if (natType === 'Symmetric NAT') {
+      networkType = '对称型NAT';
     } else if (natType === 'Port Restricted') {
-      networkType = '受限型NAT';
+      networkType = '端口受限型NAT';
     } else {
       networkType = '受限网络';
     }
@@ -63,7 +70,7 @@ class StunClient {
       type: networkType,
       details: {
         hasPublicIP,
-        canReceiveFromAny: natType === 'Full Cone',
+        canReceiveFromAny: natType === 'Full Cone' || natType === 'Full Cone or Restricted Cone',
         canConnectToStun: reachableServers.length > 0,
         stunServersReachable: reachableServers.length
       }
@@ -290,37 +297,114 @@ class StunClient {
   }
 
   /**
-   * 检测NAT类型
+   * 从STUN服务器获取映射的IP和端口信息
+   */
+  private async getMappedAddress(server: StunServer): Promise<{ ip: string; port: number } | null> {
+    return new Promise((resolve) => {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: server.url }]
+      });
+
+      pc.createDataChannel('test');
+      
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .catch(() => resolve(null));
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          const candidate = event.candidate.candidate;
+          
+          // 只处理UDP srflx类型的候选
+          if (candidate.includes('typ srflx') && candidate.includes('UDP') && !candidate.includes('TCP')) {
+            // 解析候选字符串格式: candidate:1 1 UDP 1685987327 112.193.176.245 37737 typ srflx raddr 0.0.0.0 rport 0
+            // 格式: candidate:foundation component protocol priority IP port typ type ...
+            const parts = candidate.split(' ');
+            if (parts.length >= 6) {
+              const ip = parts[4];
+              const port = parseInt(parts[5], 10);
+              
+              // 验证IP和端口是否有效
+              if (ip && !isNaN(port) && port > 0) {
+                console.log(`从 ${server.name} 获取映射地址: ${ip}:${port}`);
+                pc.close();
+                resolve({ ip, port });
+                return;
+              }
+            }
+          }
+        } else if (event.candidate === null) {
+          // ICE候选收集完成
+          pc.close();
+          resolve(null);
+        }
+      };
+
+      setTimeout(() => {
+        pc.close();
+        resolve(null);
+      }, 5000);
+    });
+  }
+
+  /**
+   * 检测NAT类型（更准确的检测方法）
    */
   private async detectNATType(): Promise<string> {
     try {
-      // 先测试所有STUN服务器的连接性
-      const connectionTests = await Promise.all(
-        this.stunServers.map(server => this.testStunServer(server))
+      // 如果只有一个STUN服务器，使用简化检测
+      if (this.stunServers.length === 1) {
+        const isReachable = await this.testStunServer(this.stunServers[0]);
+        if (isReachable) {
+          // 单个服务器无法判断对称型NAT，返回可能的类型
+          return 'Full Cone or Restricted Cone';
+        }
+        return 'Unknown';
+      }
+
+      // 从多个STUN服务器获取映射地址
+      const mappedAddresses = await Promise.all(
+        this.stunServers.map(server => this.getMappedAddress(server))
       );
-      const successfulConnections = connectionTests.filter(result => result).length;
+
+      // 过滤掉null值（无法获取映射的服务器）
+      const validAddresses = mappedAddresses.filter(addr => addr !== null) as { ip: string; port: number }[];
       
-      console.log('STUN服务器连接测试结果:', connectionTests);
-      console.log('成功连接的服务器数量:', successfulConnections);
-      
-      // 如果所有服务器都能连接，可能是全锥型NAT
-      if (successfulConnections === this.stunServers.length) {
-        return 'Full Cone';
+      console.log('从各STUN服务器获取的映射地址:', validAddresses);
+
+      if (validAddresses.length === 0) {
+        return 'Unknown';
       }
-      
-      // 如果能连接部分服务器（1个或更多，但不是全部），可能是端口受限NAT
-      if (successfulConnections > 0 && successfulConnections < this.stunServers.length) {
-        return 'Port Restricted';
+
+      // 检查所有映射的IP是否相同
+      const firstIP = validAddresses[0].ip;
+      const allSameIP = validAddresses.every(addr => addr.ip === firstIP);
+
+      if (!allSameIP) {
+        // IP不同，可能是多宿主网络或其他复杂情况
+        return 'Unknown';
       }
-      
-      // 测试STUN服务器可达性
-      const reachableServers = await this.testStunServers();
-      
-      if (reachableServers.length > 0) {
-        return 'Restricted NAT';
+
+      // 检查所有映射的端口是否相同
+      const firstPort = validAddresses[0].port;
+      const allSamePort = validAddresses.every(addr => addr.port === firstPort);
+
+      if (allSamePort) {
+        // 端口相同，可能是全锥型或受限锥型NAT
+        // 注意：在浏览器环境中无法完全区分全锥型和受限锥型
+        // 因为无法测试是否允许任意外部主机访问
+        if (validAddresses.length === this.stunServers.length) {
+          // 所有服务器都能获取映射，更可能是全锥型
+          return 'Full Cone or Restricted Cone';
+        } else {
+          // 部分服务器能获取映射，可能是受限锥型
+          return 'Restricted Cone';
+        }
+      } else {
+        // 端口不同，很可能是对称型NAT
+        // 对称型NAT：不同目标IP会映射到不同的外部端口
+        return 'Symmetric NAT';
       }
-      
-      return 'Unknown';
     } catch (error) {
       console.error('检测NAT类型失败:', error);
       return 'Unknown';
