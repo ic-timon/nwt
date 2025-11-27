@@ -54,7 +54,7 @@ class StunClient {
     } else if (natType === 'Full Cone') {
       networkType = '全锥型NAT';
     } else if (natType === 'Port Restricted') {
-      networkType = '端口受限型NAT';
+      networkType = '受限型NAT';
     } else {
       networkType = '受限网络';
     }
@@ -115,9 +115,19 @@ class StunClient {
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          clearTimeout(timeout);
-          pc.close();
-          resolve(true);
+          const candidate = event.candidate.candidate;
+          console.log(`STUN服务器 ${server.name} 检测到候选:`, candidate);
+          
+          // 检查候选类型，只有srflx或relay类型的候选才表示真正的STUN连接成功
+          if (candidate.includes('typ srflx') || candidate.includes('typ relay')) {
+            console.log(`STUN服务器 ${server.name} 连接成功，检测到公网候选`);
+            clearTimeout(timeout);
+            pc.close();
+            resolve(true);
+          } else if (candidate.includes('typ host')) {
+            console.log(`STUN服务器 ${server.name} 只检测到本地候选，连接失败`);
+            // 只有本地候选，说明STUN服务器没有响应
+          }
         }
       };
 
