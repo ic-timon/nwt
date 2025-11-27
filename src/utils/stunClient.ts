@@ -23,7 +23,6 @@ interface NetworkDetectionResult {
 class StunClient {
   private stunServers: StunServer[] = [
     { url: 'stun:stun.miwifi.com:3478', host: 'stun.miwifi.com', port: 3478, name: 'stun.miwifi.com' },
-    { url: 'stun:stun.qq.com:3478', host: 'stun.qq.com', port: 3478, name: 'stun.qq.com' }
   ];
 
   /**
@@ -119,12 +118,16 @@ class StunClient {
           const candidate = event.candidate.candidate;
           console.log(`STUN服务器 ${server.name} 检测到候选:`, candidate);
           
-          // 检查候选类型，只有srflx类型的候选才表示真正的STUN连接成功
-          if (candidate.includes('typ srflx')) {
-            console.log(`STUN服务器 ${server.name} 连接成功，检测到公网候选`);
+          // 检查候选类型，只有UDP srflx类型的候选才表示真正的STUN连接成功
+          // 忽略TCP srflx候选
+          if (candidate.includes('typ srflx') && candidate.includes('UDP') && !candidate.includes('TCP')) {
+            console.log(`STUN服务器 ${server.name} 连接成功，检测到UDP公网候选`);
             clearTimeout(timeout);
             pc.close();
             resolve(true);
+          } else if (candidate.includes('typ srflx') && candidate.includes('TCP')) {
+            console.log(`STUN服务器 ${server.name} 检测到TCP srflx候选，忽略`);
+            // TCP srflx候选不处理
           } else if (candidate.includes('typ host') || candidate.includes('typ relay')) {
             console.log(`STUN服务器 ${server.name} 只检测到本地候选或中继候选，连接失败`);
             // 只有本地候选或中继候选，说明STUN服务器没有响应
@@ -156,40 +159,46 @@ class StunClient {
           if (event.candidate) {
             const candidate = event.candidate.candidate;
             console.log('检测到ICE候选:', candidate);
-            // 检查是否包含公网IP - 更严格的检测
-            const isPrivateIP = candidate.includes('192.168.') || 
-                               candidate.includes('10.') || 
-                               candidate.includes('172.16.') ||
-                               candidate.includes('172.17.') ||
-                               candidate.includes('172.18.') ||
-                               candidate.includes('172.19.') ||
-                               candidate.includes('172.20.') ||
-                               candidate.includes('172.21.') ||
-                               candidate.includes('172.22.') ||
-                               candidate.includes('172.23.') ||
-                               candidate.includes('172.24.') ||
-                               candidate.includes('172.25.') ||
-                               candidate.includes('172.26.') ||
-                               candidate.includes('172.27.') ||
-                               candidate.includes('172.28.') ||
-                               candidate.includes('172.29.') ||
-                               candidate.includes('172.30.') ||
-                               candidate.includes('172.31.') ||
-                               candidate.includes('169.254.') || // 链路本地地址
-                               candidate.includes('127.0.0.1') || // 环回地址
-                               candidate.includes('::1') || // IPv6环回地址
-                               candidate.includes('fc00:') || // 私有IPv6
-                               candidate.includes('fd00:') || // 私有IPv6
-                               candidate.includes('fe80:') || // 链路本地IPv6
-                               candidate.includes('.local') || // 本地域名
-                               candidate.includes('localhost') || // 本地主机
-                               candidate.includes('0.0.0.0') || // 任意地址
-                               candidate.includes('255.255.255.255'); // 广播地址
             
-            console.log('是否为私有IP:', isPrivateIP, '候选类型:', event.candidate.type);
-            hasReceivedCandidate = true;
-            resolve(!isPrivateIP);
-            connection.close();
+            // 只处理UDP srflx类型的候选，忽略TCP srflx
+            if (candidate.includes('typ srflx') && candidate.includes('UDP') && !candidate.includes('TCP')) {
+              // 检查是否包含公网IP - 更严格的检测
+              const isPrivateIP = candidate.includes('192.168.') || 
+                                 candidate.includes('10.') ||
+                                 candidate.includes('172.16.') ||
+                                 candidate.includes('172.17.') ||
+                                 candidate.includes('172.18.') ||
+                                 candidate.includes('172.19.') ||
+                                 candidate.includes('172.20.') ||
+                                 candidate.includes('172.21.') ||
+                                 candidate.includes('172.22.') ||
+                                 candidate.includes('172.23.') ||
+                                 candidate.includes('172.24.') ||
+                                 candidate.includes('172.25.') ||
+                                 candidate.includes('172.26.') ||
+                                 candidate.includes('172.27.') ||
+                                 candidate.includes('172.28.') ||
+                                 candidate.includes('172.29.') ||
+                                 candidate.includes('172.30.') ||
+                                 candidate.includes('172.31.') ||
+                                 candidate.includes('169.254.') || // 链路本地地址
+                                 candidate.includes('127.0.0.1') || // 环回地址
+                                 candidate.includes('::1') || // IPv6环回地址
+                                 candidate.includes('fc00:') || // 私有IPv6
+                                 candidate.includes('fd00:') || // 私有IPv6
+                                 candidate.includes('fe80:') || // 链路本地IPv6
+                                 candidate.includes('.local') || // 本地域名
+                                 candidate.includes('localhost') || // 本地主机
+                                 candidate.includes('0.0.0.0') || // 任意地址
+                                 candidate.includes('255.255.255.255'); // 广播地址
+              
+              console.log('是否为私有IP:', isPrivateIP, '候选类型:', event.candidate.type);
+              hasReceivedCandidate = true;
+              resolve(!isPrivateIP);
+              connection.close();
+            } else if (candidate.includes('typ srflx') && candidate.includes('TCP')) {
+              console.log('检测到TCP srflx候选，忽略');
+            }
           }
         };
         
@@ -229,40 +238,46 @@ class StunClient {
         if (event.candidate) {
           const candidate = event.candidate.candidate;
           console.log('公网IP检测候选:', candidate);
-          // 解析候选信息获取IP地址
-          const ipMatch = candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
-          if (ipMatch) {
-            const ip = ipMatch[1];
-            // 检查是否为私有IP
-            const isPrivateIP = ip.startsWith('192.168.') || 
-                               ip.startsWith('10.') || 
-                               ip.startsWith('172.16.') || 
-                               ip.startsWith('172.17.') || 
-                               ip.startsWith('172.18.') || 
-                               ip.startsWith('172.19.') || 
-                               ip.startsWith('172.20.') || 
-                               ip.startsWith('172.21.') || 
-                               ip.startsWith('172.22.') || 
-                               ip.startsWith('172.23.') || 
-                               ip.startsWith('172.24.') || 
-                               ip.startsWith('172.25.') || 
-                               ip.startsWith('172.26.') || 
-                               ip.startsWith('172.27.') || 
-                               ip.startsWith('172.28.') || 
-                               ip.startsWith('172.29.') || 
-                               ip.startsWith('172.30.') || 
-                               ip.startsWith('172.31.') || 
-                               ip.startsWith('169.254.') || 
-                               ip.startsWith('127.') ||
-                               ip === '0.0.0.0' ||
-                               ip === '255.255.255.255';
-            
-            console.log('找到IP:', ip, '是否为私有IP:', isPrivateIP);
-            
-            if (!isPrivateIP) {
-              pc.close();
-              resolve(ip);
+          
+          // 只处理UDP srflx类型的候选，忽略TCP srflx
+          if (candidate.includes('typ srflx') && candidate.includes('UDP') && !candidate.includes('TCP')) {
+            // 解析候选信息获取IP地址
+            const ipMatch = candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
+            if (ipMatch) {
+              const ip = ipMatch[1];
+              // 检查是否为私有IP
+              const isPrivateIP = ip.startsWith('192.168.') || 
+                                 ip.startsWith('10.') || 
+                                 ip.startsWith('172.16.') || 
+                                 ip.startsWith('172.17.') || 
+                                 ip.startsWith('172.18.') || 
+                                 ip.startsWith('172.19.') || 
+                                 ip.startsWith('172.20.') || 
+                                 ip.startsWith('172.21.') || 
+                                 ip.startsWith('172.22.') || 
+                                 ip.startsWith('172.23.') || 
+                                 ip.startsWith('172.24.') || 
+                                 ip.startsWith('172.25.') || 
+                                 ip.startsWith('172.26.') || 
+                                 ip.startsWith('172.27.') || 
+                                 ip.startsWith('172.28.') || 
+                                 ip.startsWith('172.29.') || 
+                                 ip.startsWith('172.30.') || 
+                                 ip.startsWith('172.31.') || 
+                                 ip.startsWith('169.254.') || 
+                                 ip.startsWith('127.') ||
+                                 ip === '0.0.0.0' ||
+                                 ip === '255.255.255.255';
+              
+              console.log('找到UDP srflx IP:', ip, '是否为私有IP:', isPrivateIP);
+              
+              if (!isPrivateIP) {
+                pc.close();
+                resolve(ip);
+              }
             }
+          } else if (candidate.includes('typ srflx') && candidate.includes('TCP')) {
+            console.log('检测到TCP srflx候选，忽略');
           }
         }
       };
