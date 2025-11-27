@@ -8,7 +8,7 @@
 - **详细网络信息**: 显示公网IP、本地IP、STUN服务器可达状态
 - **实时检测**: 支持实时网络状态检测和更新
 - **响应式设计**: 适配不同屏幕尺寸的设备
-- **生产就绪**: 完整的前后端分离架构，支持生产环境部署
+- **纯前端架构**: 无需服务器，可直接部署到静态托管平台
 
 ## 🛠️ 技术栈
 
@@ -18,9 +18,9 @@
 - **Vite** - 快速构建工具
 - **Ant Design 6.0** - 企业级UI组件库
 
-### 后端
-- **Express.js** - Node.js Web框架
-- **CORS** - 跨域资源共享中间件
+### 架构特点
+- **纯前端实现**: 所有网络检测逻辑在浏览器中执行
+- **无服务器依赖**: 无需后端服务，部署简单
 
 ### 网络检测
 - **WebRTC** - 实时通信技术
@@ -36,9 +36,6 @@ nwt/
 │   ├── main.tsx             # 应用入口
 │   └── utils/
 │       └── stunClient.ts    # STUN客户端工具类
-├── server/
-│   ├── index.js             # Express服务器
-│   └── package.json         # 服务器依赖
 ├── dist/                    # 构建输出目录
 └── package.json             # 项目配置
 ```
@@ -46,78 +43,49 @@ nwt/
 ## 🚀 快速开始
 
 ### 环境要求
-- Node.js 18+
-- npm 或 yarn
+- Node.js 18+ (仅开发环境需要)
+- npm 或 yarn (仅开发环境需要)
 
 ### 安装依赖
 
 ```bash
-# 安装前端依赖
+# 安装项目依赖
 npm install
-
-# 安装服务器依赖
-cd server && npm install
 ```
 
 ### 开发模式
 
 ```bash
-# 启动开发服务器（前端）
+# 启动开发服务器
 npm run dev
-
-# 启动开发服务器（后端）
-npm run server:dev
 ```
 
-开发服务器将在以下地址启动：
-- 前端：http://localhost:5173
-- 后端：http://localhost:8080
+开发服务器将在 http://localhost:5173 启动
 
 ### 生产构建
 
 ```bash
-# 构建前端应用
+# 构建应用
 npm run build
 
-# 启动生产服务器
-npm run server
+# 预览生产版本
+npm run preview
 ```
 
-生产服务器将在 http://localhost:8080 启动
+预览服务器将在 http://localhost:4173 启动
 
-## 📡 API接口
+### 静态部署
 
-### 健康检查
-```http
-GET /api/health
-```
+构建完成后，可将 `dist` 目录部署到任何静态托管服务：
+- GitHub Pages
+- Vercel
+- Netlify
+- 其他静态文件服务器
 
-响应示例：
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-11-27T00:33:25.660Z",
-  "version": "1.0.0"
-}
-```
+## 🔧 配置说明
 
-### 网络检测
-```http
-POST /api/detect-network
-```
-
-请求体：
-```json
-{
-  "networkType": "Full Cone",
-  "publicIP": "123.123.123.123",
-  "localIP": "192.168.1.100",
-  "stunServers": [
-    {"server": "stun1.l.google.com:19302", "reachable": true}
-  ],
-  "timestamp": "2025-11-27T00:33:25.660Z"
-}
-```
+### STUN服务器配置
+在 `src/utils/stunClient.ts` 中可以配置使用的STUN服务器：
 
 ## 🔧 配置说明
 
@@ -134,12 +102,8 @@ const stunServers: StunServer[] = [
 ];
 ```
 
-### 服务器端口配置
-在 `server/index.js` 中可以修改服务器端口：
-
-```javascript
-const PORT = process.env.PORT || 8080;
-```
+### 开发服务器端口配置
+在 `vite.config.ts` 中可以修改开发服务器端口：
 
 ## 🧪 检测原理
 
@@ -168,14 +132,12 @@ const PORT = process.env.PORT || 8080;
    - 检查网络连接
    - 确认浏览器支持WebRTC
    - 检查防火墙设置
+   - 尝试刷新页面重新检测
 
-2. **端口占用**
-   - 修改服务器端口配置
-   - 检查是否有其他服务占用端口
-
-3. **CORS错误**
-   - 确保前后端域名配置正确
-   - 检查服务器CORS设置
+2. **STUN服务器不可达**
+   - 某些STUN服务器可能被网络屏蔽
+   - 尝试更换其他STUN服务器
+   - 检查网络代理设置
 
 ### 调试模式
 
