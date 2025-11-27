@@ -6,6 +6,24 @@ import StunClient from './utils/stunClient'
 
 const { Title, Text } = Typography
 
+// 格式化NAT类型名称
+const formatNATType = (type: string): string => {
+  switch (type) {
+    case 'Full Cone or Restricted Cone':
+      return '全锥型/受限锥型NAT';
+    case 'Restricted Cone':
+      return '受限锥型NAT';
+    case 'Symmetric NAT':
+      return '对称型NAT（可STUN，但P2P困难）';
+    case 'Port Restricted':
+      return '端口受限型NAT';
+    case 'Unknown':
+      return '受限网络（可STUN通信）';
+    default:
+      return type || '未知';
+  }
+}
+
 function App() {
   const [isDetecting, setIsDetecting] = useState(false)
   const [networkType, setNetworkType] = useState<string>('')
@@ -88,25 +106,147 @@ function App() {
                 />
                 
                 {networkDetails && (
-                  <Card size="small" title="详细信息">
-                    <Descriptions column={1} size="small">
-                      <Descriptions.Item label="网络类型">
-                        <Text strong>{networkDetails.type}</Text>
-                      </Descriptions.Item>
-                      <Descriptions.Item label="公网IP">
-                        {networkDetails.publicIP || '未检测到'}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="本地IP">
-                        {networkDetails.localIP || '未检测到'}
-                      </Descriptions.Item>
-                      <Descriptions.Item label="STUN服务器可达">
-                        {networkDetails.stunServersReachable} / {networkDetails.stunServers.length} 个
-                      </Descriptions.Item>
-                      <Descriptions.Item label="检测时间">
-                        {new Date().toLocaleString()}
-                      </Descriptions.Item>
-                    </Descriptions>
-                  </Card>
+                  <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+                    <Card size="small" title="基本信息">
+                      <Descriptions column={1} size="small">
+                        <Descriptions.Item label="网络类型">
+                          <Text strong>{networkDetails.type}</Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="公网IP">
+                          {networkDetails.publicIP || '未检测到'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="本地IP">
+                          {networkDetails.localIP || '未检测到'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="STUN服务器可达">
+                          {networkDetails.stunServersReachable} / {networkDetails.stunServers.length} 个
+                        </Descriptions.Item>
+                        <Descriptions.Item label="检测时间">
+                          {new Date().toLocaleString()}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    </Card>
+
+                    {networkDetails.details && (
+                      <>
+                        {/* IPv4检测结果 */}
+                        <Card size="small" title="IPv4 检测结果">
+                          <Descriptions column={1} size="small" bordered>
+                            <Descriptions.Item label="UDP NAT类型">
+                              {networkDetails.details.ipv4?.udp ? (
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Text strong>{formatNATType(networkDetails.details.ipv4.udp.type)}</Text>
+                                  {networkDetails.details.ipv4.udp.mappedAddresses.length > 0 && (
+                                    <div style={{ marginTop: '8px' }}>
+                                      <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
+                                      {networkDetails.details.ipv4.udp.mappedAddresses.map((addr: any, idx: number) => (
+                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
+                                          {addr.server}: {addr.ip}:{addr.port}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </Space>
+                              ) : (
+                                <Text type="secondary">未检测到</Text>
+                              )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="UDP连接能力">
+                              {networkDetails.details.ipv4?.udpCanConnect ? (
+                                <Text type="success">可连接</Text>
+                              ) : (
+                                <Text type="secondary">不可连接</Text>
+                              )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="TCP NAT类型">
+                              {networkDetails.details.ipv4?.tcp ? (
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Text strong>{formatNATType(networkDetails.details.ipv4.tcp.type)}</Text>
+                                  {networkDetails.details.ipv4.tcp.mappedAddresses.length > 0 && (
+                                    <div style={{ marginTop: '8px' }}>
+                                      <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
+                                      {networkDetails.details.ipv4.tcp.mappedAddresses.map((addr: any, idx: number) => (
+                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
+                                          {addr.server}: {addr.ip}:{addr.port}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </Space>
+                              ) : (
+                                <Text type="secondary">未检测到</Text>
+                              )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="TCP连接能力">
+                              {networkDetails.details.ipv4?.tcpCanConnect ? (
+                                <Text type="success">可连接</Text>
+                              ) : (
+                                <Text type="secondary">不可连接</Text>
+                              )}
+                            </Descriptions.Item>
+                          </Descriptions>
+                        </Card>
+
+                        {/* IPv6检测结果 */}
+                        <Card size="small" title="IPv6 检测结果">
+                          <Descriptions column={1} size="small" bordered>
+                            <Descriptions.Item label="UDP NAT类型">
+                              {networkDetails.details.ipv6?.udp ? (
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Text strong>{formatNATType(networkDetails.details.ipv6.udp.type)}</Text>
+                                  {networkDetails.details.ipv6.udp.mappedAddresses.length > 0 && (
+                                    <div style={{ marginTop: '8px' }}>
+                                      <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
+                                      {networkDetails.details.ipv6.udp.mappedAddresses.map((addr: any, idx: number) => (
+                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
+                                          {addr.server}: {addr.ip}:{addr.port}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </Space>
+                              ) : (
+                                <Text type="secondary">未检测到</Text>
+                              )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="UDP连接能力">
+                              {networkDetails.details.ipv6?.udpCanConnect ? (
+                                <Text type="success">可连接</Text>
+                              ) : (
+                                <Text type="secondary">不可连接</Text>
+                              )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="TCP NAT类型">
+                              {networkDetails.details.ipv6?.tcp ? (
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Text strong>{formatNATType(networkDetails.details.ipv6.tcp.type)}</Text>
+                                  {networkDetails.details.ipv6.tcp.mappedAddresses.length > 0 && (
+                                    <div style={{ marginTop: '8px' }}>
+                                      <Text type="secondary" style={{ fontSize: '12px' }}>映射地址：</Text>
+                                      {networkDetails.details.ipv6.tcp.mappedAddresses.map((addr: any, idx: number) => (
+                                        <div key={idx} style={{ fontSize: '12px', marginLeft: '16px' }}>
+                                          {addr.server}: {addr.ip}:{addr.port}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </Space>
+                              ) : (
+                                <Text type="secondary">未检测到</Text>
+                              )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="TCP连接能力">
+                              {networkDetails.details.ipv6?.tcpCanConnect ? (
+                                <Text type="success">可连接</Text>
+                              ) : (
+                                <Text type="secondary">不可连接</Text>
+                              )}
+                            </Descriptions.Item>
+                          </Descriptions>
+                        </Card>
+                      </>
+                    )}
+                  </Space>
                 )}
               </Space>
             )}

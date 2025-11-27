@@ -10,6 +10,11 @@ interface StunServer {
   name: string;
 }
 
+interface NATTypeResult {
+  type: string;
+  mappedAddresses: { ip: string; port: number; server: string }[];
+}
+
 interface NetworkDetectionResult {
   type: string;
   details: {
@@ -17,6 +22,25 @@ interface NetworkDetectionResult {
     canReceiveFromAny: boolean;
     canConnectToStun: boolean;
     stunServersReachable: number;
+    // IPv4检测结果
+    ipv4: {
+      udp: NATTypeResult | null;
+      tcp: NATTypeResult | null;
+      udpCanConnect: boolean;
+      tcpCanConnect: boolean;
+    };
+    // IPv6检测结果
+    ipv6: {
+      udp: NATTypeResult | null;
+      tcp: NATTypeResult | null;
+      udpCanConnect: boolean;
+      tcpCanConnect: boolean;
+    };
+    // 向后兼容的字段
+    udpNatType: string;
+    tcpNatType: string | null;
+    udpCanConnect: boolean;
+    tcpCanConnect: boolean;
   };
 }
 
@@ -36,57 +60,117 @@ class StunClient {
     // 1. 测试STUN服务器可达性
     const reachableServers = await this.testStunServers();
     
-    // 2. 检测公网IP
+    // 2. 检测TCP和UDP连接能力
+    const connectionResults = await Promise.all(
+      this.stunServers.map(server => this.testStunServerConnection(server))
+    );
+    const udpCanConnect = connectionResults.some(r => r.udp);
+    const tcpCanConnect = connectionResults.some(r => r.tcp);
+    
+    // 3. 检测公网IP
     const hasPublicIP = await this.detectPublicIP();
     
-    // 3. 检测NAT类型
-    const natType = await this.detectNATType();
+    // 4. 分别检测IPv4和IPv6的UDP和TCP NAT类型
+    const [
+      ipv4UdpResult,
+      ipv4TcpResult,
+      ipv6UdpResult,
+      ipv6TcpResult
+    ] = await Promise.all([
+      this.detectIPv4UDPNATType(),
+      this.detectIPv4TCPNATType(),
+      this.detectIPv6UDPNATType(),
+      this.detectIPv6TCPNATType()
+    ]);
+
+    // 5. 向后兼容：获取UDP和TCP的NAT类型（优先使用IPv4）
+    const udpNatType = ipv4UdpResult?.type || ipv6UdpResult?.type || 'Unknown';
+    const tcpNatType = ipv4TcpResult?.type || ipv6TcpResult?.type || null;
     
-    // 4. 综合判断网络类型
+    // 6. 综合判断网络类型
     let networkType: string;
     
     if (reachableServers.length === 0) {
       networkType = '防火墙阻断网络';
-    } else if (hasPublicIP && natType === 'Unknown') {
+    } else if (hasPublicIP && udpNatType === 'Unknown' && !tcpNatType) {
       // 检测到公网IP且没有NAT，判断为公网型网络
-      // 如果只有1个服务器可达，可能是网络环境限制，但仍可能是公网
       networkType = '公网型网络';
-    } else if (natType === 'Full Cone or Restricted Cone') {
-      networkType = '全锥型/受限锥型NAT';
-    } else if (natType === 'Restricted Cone') {
-      networkType = '受限锥型NAT';
-    } else if (natType === 'Symmetric NAT') {
-      // 对称型NAT：可以通过STUN获取映射地址，但打洞成功率较低
-      // 特点：不同目标IP会映射到不同的外部端口
-      // 通信能力：可以获取STUN映射地址，但直接P2P连接成功率较低，通常需要TURN服务器
-      networkType = '对称型NAT（可STUN，但P2P困难）';
-    } else if (natType === 'Port Restricted') {
-      networkType = '端口受限型NAT';
     } else {
-      // 能够连接STUN服务器（reachableServers.length > 0），但NAT类型检测不明确
-      // 这种情况仍然可以进行STUN通信，只是无法确定具体的NAT类型
-      // 可能的原因：
-      // 1. 部分STUN服务器无法获取映射地址
-      // 2. 网络环境复杂，无法准确判断NAT类型
-      // 3. 但至少能连接STUN服务器，说明可以进行STUN通信
-      networkType = '受限网络（可STUN通信）';
+      // 根据UDP和TCP的NAT类型综合判断
+      const udpType = this.formatNATType(udpNatType);
+      const tcpType = tcpNatType ? this.formatNATType(tcpNatType) : null;
+      
+      if (tcpType && udpType !== tcpType) {
+        // TCP和UDP的NAT类型不同 - 这解释了为什么BT（TCP）可以正常工作但WebRTC（UDP）可能受限
+        networkType = `UDP ${udpType}，TCP ${tcpType}`;
+        console.log(`检测到TCP和UDP NAT类型不同：UDP=${udpNatType}, TCP=${tcpNatType}`);
+        console.log('这解释了为什么BT（TCP）可以正常工作，但WebRTC（UDP）可能受限');
+      } else if (tcpType) {
+        // TCP和UDP类型相同，或只有TCP检测成功
+        networkType = `${tcpType}（TCP/UDP）`;
+      } else {
+        // 只有UDP检测成功（TCP检测失败或未检测到TCP srflx候选）
+        networkType = `${udpType}（仅UDP检测）`;
+        if (tcpCanConnect) {
+          console.log('UDP NAT类型已检测，但TCP srflx候选未获取到（TCP可能使用不同的NAT策略）');
+        }
+      }
     }
+    
+    // 7. 确定IPv4和IPv6的连接能力
+    const ipv4UdpCanConnect = ipv4UdpResult !== null;
+    const ipv4TcpCanConnect = ipv4TcpResult !== null;
+    const ipv6UdpCanConnect = ipv6UdpResult !== null;
+    const ipv6TcpCanConnect = ipv6TcpResult !== null;
     
     return {
       type: networkType,
       details: {
         hasPublicIP,
-        canReceiveFromAny: natType === 'Full Cone' || natType === 'Full Cone or Restricted Cone',
-        // 只要reachableServers.length > 0，就可以进行STUN通信（获取映射地址）
-        // 注意：
-        // 1. "受限网络"虽然名称可能让人误解，但实际上canConnectToStun为true
-        // 2. "对称型NAT"可以获取STUN映射地址（canConnectToStun为true），但P2P打洞成功率较低
-        //    因为不同目标会映射到不同端口，即使双方都获取了对方的映射地址，直接连接也可能失败
-        //    通常需要TURN服务器作为中继才能成功通信
+        canReceiveFromAny: udpNatType === 'Full Cone' || udpNatType === 'Full Cone or Restricted Cone',
         canConnectToStun: reachableServers.length > 0,
-        stunServersReachable: reachableServers.length
+        stunServersReachable: reachableServers.length,
+        // IPv4检测结果
+        ipv4: {
+          udp: ipv4UdpResult,
+          tcp: ipv4TcpResult,
+          udpCanConnect: ipv4UdpCanConnect,
+          tcpCanConnect: ipv4TcpCanConnect
+        },
+        // IPv6检测结果
+        ipv6: {
+          udp: ipv6UdpResult,
+          tcp: ipv6TcpResult,
+          udpCanConnect: ipv6UdpCanConnect,
+          tcpCanConnect: ipv6TcpCanConnect
+        },
+        // 向后兼容的字段
+        udpNatType,
+        tcpNatType,
+        udpCanConnect,
+        tcpCanConnect
       }
     };
+  }
+
+  /**
+   * 格式化NAT类型名称
+   */
+  private formatNATType(natType: string): string {
+    switch (natType) {
+      case 'Full Cone or Restricted Cone':
+        return '全锥型/受限锥型NAT';
+      case 'Restricted Cone':
+        return '受限锥型NAT';
+      case 'Symmetric NAT':
+        return '对称型NAT（可STUN，但P2P困难）';
+      case 'Port Restricted':
+        return '端口受限型NAT';
+      case 'Unknown':
+        return '受限网络（可STUN通信）';
+      default:
+        return '受限网络（可STUN通信）';
+    }
   }
 
   /**
@@ -110,13 +194,15 @@ class StunClient {
   }
 
   /**
-   * 测试单个STUN服务器
+   * 测试单个STUN服务器的TCP和UDP连接能力
    */
-  private async testStunServer(server: StunServer): Promise<boolean> {
+  private async testStunServerConnection(server: StunServer): Promise<{ udp: boolean; tcp: boolean }> {
     return new Promise((resolve) => {
       let resolved = false;
       let pc: RTCPeerConnection | null = null;
       let timeout: number | null = null;
+      let udpConnected = false;
+      let tcpConnected = false;
 
       const cleanup = () => {
         if (timeout) {
@@ -133,15 +219,15 @@ class StunClient {
         }
       };
 
-      const finish = (result: boolean) => {
+      const finish = () => {
         if (resolved) return;
         resolved = true;
         cleanup();
-        resolve(result);
+        resolve({ udp: udpConnected, tcp: tcpConnected });
       };
 
       timeout = setTimeout(() => {
-        finish(false);
+        finish();
       }, 5000);
 
       // 创建RTCPeerConnection测试STUN连接
@@ -154,7 +240,7 @@ class StunClient {
       pc.createOffer()
         .then(offer => pc?.setLocalDescription(offer))
         .catch(() => {
-          finish(false);
+          finish();
         });
 
       pc.onicecandidate = (event) => {
@@ -162,26 +248,34 @@ class StunClient {
           const candidate = event.candidate.candidate;
           console.log(`STUN服务器 ${server.name} 检测到候选:`, candidate);
           
-          // 检查候选类型，只有UDP srflx类型的候选才表示真正的STUN连接成功
-          // 忽略TCP srflx候选
+          // 检查UDP srflx候选
           if (candidate.includes('typ srflx') && candidate.includes('UDP') && !candidate.includes('TCP')) {
             console.log(`STUN服务器 ${server.name} 连接成功，检测到UDP公网候选`);
-            finish(true);
-          } else if (candidate.includes('typ srflx') && candidate.includes('TCP')) {
-            console.log(`STUN服务器 ${server.name} 检测到TCP srflx候选，忽略`);
-            // TCP srflx候选不处理
+            udpConnected = true;
+          } 
+          // 检查TCP srflx候选
+          else if (candidate.includes('typ srflx') && candidate.includes('TCP')) {
+            console.log(`STUN服务器 ${server.name} 连接成功，检测到TCP公网候选`);
+            tcpConnected = true;
           } else if (candidate.includes('typ host') || candidate.includes('typ relay')) {
-            console.log(`STUN服务器 ${server.name} 只检测到本地候选或中继候选，连接失败`);
+            console.log(`STUN服务器 ${server.name} 只检测到本地候选或中继候选`);
             // 只有本地候选或中继候选，说明STUN服务器没有响应
           }
         } else if (event.candidate === null) {
-          // ICE候选收集完成，如果没有收到srflx候选，则失败
-          if (!resolved) {
-            finish(false);
-          }
+          // ICE候选收集完成
+          finish();
         }
       };
     });
+  }
+
+  /**
+   * 测试单个STUN服务器（保持向后兼容）
+   */
+  private async testStunServer(server: StunServer): Promise<boolean> {
+    const result = await this.testStunServerConnection(server);
+    // 如果UDP或TCP任一能连接，就认为服务器可达
+    return result.udp || result.tcp;
   }
 
   /**
@@ -391,13 +485,27 @@ class StunClient {
   }
 
   /**
-   * 从STUN服务器获取映射的IP和端口信息
+   * 判断IP地址是IPv4还是IPv6
    */
-  private async getMappedAddress(server: StunServer): Promise<{ ip: string; port: number } | null> {
+  private isIPv6(ip: string): boolean {
+    return ip.includes(':');
+  }
+
+  /**
+   * 从STUN服务器获取映射的IP和端口信息（分别收集IPv4和IPv6的TCP/UDP地址）
+   */
+  private async getMappedAddress(server: StunServer): Promise<{
+    ipv4: { udp: { ip: string; port: number } | null, tcp: { ip: string; port: number } | null },
+    ipv6: { udp: { ip: string; port: number } | null, tcp: { ip: string; port: number } | null }
+  }> {
     return new Promise((resolve) => {
       let resolved = false;
       let pc: RTCPeerConnection | null = null;
       let timeout: number | null = null;
+      const addresses = {
+        ipv4: { udp: null as { ip: string; port: number } | null, tcp: null as { ip: string; port: number } | null },
+        ipv6: { udp: null as { ip: string; port: number } | null, tcp: null as { ip: string; port: number } | null }
+      };
 
       const cleanup = () => {
         if (timeout) {
@@ -414,15 +522,15 @@ class StunClient {
         }
       };
 
-      const finish = (result: { ip: string; port: number } | null) => {
+      const finish = () => {
         if (resolved) return;
         resolved = true;
         cleanup();
-        resolve(result);
+        resolve(addresses);
       };
 
       timeout = setTimeout(() => {
-        finish(null);
+        finish();
       }, 5000);
 
       pc = new RTCPeerConnection({
@@ -433,13 +541,13 @@ class StunClient {
       
       pc.createOffer()
         .then(offer => pc?.setLocalDescription(offer))
-        .catch(() => finish(null));
+        .catch(() => finish());
 
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           const candidate = event.candidate.candidate;
           
-          // 只处理UDP srflx类型的候选
+          // 处理UDP srflx类型的候选
           if (candidate.includes('typ srflx') && candidate.includes('UDP') && !candidate.includes('TCP')) {
             // 解析候选字符串格式: candidate:1 1 UDP 1685987327 112.193.176.245 37737 typ srflx raddr 0.0.0.0 rport 0
             // 格式: candidate:foundation component protocol priority IP port typ type ...
@@ -450,89 +558,256 @@ class StunClient {
               
               // 验证IP和端口是否有效
               if (ip && !isNaN(port) && port > 0) {
-                console.log(`从 ${server.name} 获取映射地址: ${ip}:${port}`);
-                finish({ ip, port });
+                const isIPv6Addr = this.isIPv6(ip);
+                if (isIPv6Addr) {
+                  addresses.ipv6.udp = { ip, port };
+                  console.log(`从 ${server.name} 获取IPv6 UDP映射地址: ${ip}:${port}`);
+                } else {
+                  addresses.ipv4.udp = { ip, port };
+                  console.log(`从 ${server.name} 获取IPv4 UDP映射地址: ${ip}:${port}`);
+                }
+                return;
+              }
+            }
+          }
+          // 处理TCP srflx类型的候选
+          else if (candidate.includes('typ srflx') && candidate.includes('TCP')) {
+            // 解析TCP候选字符串格式
+            const parts = candidate.split(' ');
+            if (parts.length >= 6) {
+              const ip = parts[4];
+              const port = parseInt(parts[5], 10);
+              
+              // 验证IP和端口是否有效
+              if (ip && !isNaN(port) && port > 0) {
+                const isIPv6Addr = this.isIPv6(ip);
+                if (isIPv6Addr) {
+                  addresses.ipv6.tcp = { ip, port };
+                  console.log(`从 ${server.name} 获取IPv6 TCP映射地址: ${ip}:${port}`);
+                } else {
+                  addresses.ipv4.tcp = { ip, port };
+                  console.log(`从 ${server.name} 获取IPv4 TCP映射地址: ${ip}:${port}`);
+                }
                 return;
               }
             }
           }
         } else if (event.candidate === null) {
           // ICE候选收集完成
-          if (!resolved) {
-            finish(null);
-          }
+          finish();
         }
       };
     });
   }
 
   /**
-   * 检测NAT类型（更准确的检测方法）
+   * 检测NAT类型（通用方法，支持IPv4/IPv6和UDP/TCP）
    */
-  private async detectNATType(): Promise<string> {
+  private detectNATTypeFromAddresses(
+    addresses: { ip: string; port: number; server: string }[],
+    protocol: 'UDP' | 'TCP',
+    ipVersion: 'IPv4' | 'IPv6'
+  ): NATTypeResult | null {
+    if (addresses.length === 0) {
+      return null;
+    }
+
+    // 检查所有映射的IP是否相同
+    const firstIP = addresses[0].ip;
+    const allSameIP = addresses.every(addr => addr.ip === firstIP);
+
+    if (!allSameIP) {
+      // IP不同，可能是多宿主网络或其他复杂情况
+      console.log(`${ipVersion} ${protocol} IP不同，可能是多宿主网络`);
+      return {
+        type: 'Unknown',
+        mappedAddresses: addresses
+      };
+    }
+
+    // 检查所有映射的端口是否相同
+    const firstPort = addresses[0].port;
+    const allSamePort = addresses.every(addr => addr.port === firstPort);
+
+    let natType: string;
+    if (allSamePort) {
+      // 端口相同，可能是全锥型或受限锥型NAT
+      if (addresses.length === this.stunServers.length) {
+        // 所有服务器都能获取映射，更可能是全锥型
+        natType = 'Full Cone or Restricted Cone';
+      } else {
+        // 部分服务器能获取映射，可能是受限锥型
+        natType = 'Restricted Cone';
+      }
+    } else {
+      // 端口不同，很可能是对称型NAT
+      natType = 'Symmetric NAT';
+      console.log(`检测到${ipVersion} ${protocol}对称型NAT：不同STUN服务器返回的映射端口不同`);
+    }
+
+    return {
+      type: natType,
+      mappedAddresses: addresses
+    };
+  }
+
+  /**
+   * 检测IPv4 UDP NAT类型
+   */
+  private async detectIPv4UDPNATType(): Promise<NATTypeResult | null> {
     try {
-      // 如果只有一个STUN服务器，使用简化检测
       if (this.stunServers.length === 1) {
-        const isReachable = await this.testStunServer(this.stunServers[0]);
-        if (isReachable) {
-          // 单个服务器无法判断对称型NAT，返回可能的类型
-          return 'Full Cone or Restricted Cone';
+        const connectionResult = await this.testStunServerConnection(this.stunServers[0]);
+        if (connectionResult.udp) {
+          return {
+            type: 'Full Cone or Restricted Cone',
+            mappedAddresses: []
+          };
         }
-        return 'Unknown';
+        return null;
       }
 
-      // 从多个STUN服务器获取映射地址
       const mappedAddresses = await Promise.all(
         this.stunServers.map(server => this.getMappedAddress(server))
       );
 
-      // 过滤掉null值（无法获取映射的服务器）
-      const validAddresses = mappedAddresses.filter(addr => addr !== null) as { ip: string; port: number }[];
-      
-      console.log('从各STUN服务器获取的映射地址:', validAddresses);
+      const ipv4UdpAddresses = mappedAddresses
+        .map((addr, index) => ({
+          address: addr.ipv4.udp,
+          server: this.stunServers[index].name
+        }))
+        .filter(item => item.address !== null)
+        .map(item => ({
+          ip: item.address!.ip,
+          port: item.address!.port,
+          server: item.server
+        }));
 
-      if (validAddresses.length === 0) {
-        return 'Unknown';
-      }
-
-      // 检查所有映射的IP是否相同
-      const firstIP = validAddresses[0].ip;
-      const allSameIP = validAddresses.every(addr => addr.ip === firstIP);
-
-      if (!allSameIP) {
-        // IP不同，可能是多宿主网络或其他复杂情况
-        return 'Unknown';
-      }
-
-      // 检查所有映射的端口是否相同
-      const firstPort = validAddresses[0].port;
-      const allSamePort = validAddresses.every(addr => addr.port === firstPort);
-
-      if (allSamePort) {
-        // 端口相同，可能是全锥型或受限锥型NAT
-        // 注意：在浏览器环境中无法完全区分全锥型和受限锥型
-        // 因为无法测试是否允许任意外部主机访问
-        if (validAddresses.length === this.stunServers.length) {
-          // 所有服务器都能获取映射，更可能是全锥型
-          return 'Full Cone or Restricted Cone';
-        } else {
-          // 部分服务器能获取映射，可能是受限锥型
-          return 'Restricted Cone';
-        }
-      } else {
-        // 端口不同，很可能是对称型NAT
-        // 对称型NAT的特点：
-        // 1. 不同目标IP会映射到不同的外部端口
-        // 2. 这是最严格的NAT类型
-        // 3. 虽然可以通过STUN获取映射地址，但打洞成功率较低
-        // 4. 因为即使双方都获取了对方的映射地址，但由于端口不同，直接连接可能失败
-        // 5. 通常需要TURN服务器作为中继才能成功通信
-        console.log('检测到对称型NAT：不同STUN服务器返回的映射端口不同');
-        return 'Symmetric NAT';
-      }
+      console.log('从各STUN服务器获取的IPv4 UDP映射地址:', ipv4UdpAddresses);
+      return this.detectNATTypeFromAddresses(ipv4UdpAddresses, 'UDP', 'IPv4');
     } catch (error) {
-      console.error('检测NAT类型失败:', error);
-      return 'Unknown';
+      console.error('检测IPv4 UDP NAT类型失败:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 检测IPv6 UDP NAT类型
+   */
+  private async detectIPv6UDPNATType(): Promise<NATTypeResult | null> {
+    try {
+      if (this.stunServers.length === 1) {
+        const connectionResult = await this.testStunServerConnection(this.stunServers[0]);
+        if (connectionResult.udp) {
+          return {
+            type: 'Full Cone or Restricted Cone',
+            mappedAddresses: []
+          };
+        }
+        return null;
+      }
+
+      const mappedAddresses = await Promise.all(
+        this.stunServers.map(server => this.getMappedAddress(server))
+      );
+
+      const ipv6UdpAddresses = mappedAddresses
+        .map((addr, index) => ({
+          address: addr.ipv6.udp,
+          server: this.stunServers[index].name
+        }))
+        .filter(item => item.address !== null)
+        .map(item => ({
+          ip: item.address!.ip,
+          port: item.address!.port,
+          server: item.server
+        }));
+
+      console.log('从各STUN服务器获取的IPv6 UDP映射地址:', ipv6UdpAddresses);
+      return this.detectNATTypeFromAddresses(ipv6UdpAddresses, 'UDP', 'IPv6');
+    } catch (error) {
+      console.error('检测IPv6 UDP NAT类型失败:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 检测IPv4 TCP NAT类型
+   */
+  private async detectIPv4TCPNATType(): Promise<NATTypeResult | null> {
+    try {
+      if (this.stunServers.length === 1) {
+        const connectionResult = await this.testStunServerConnection(this.stunServers[0]);
+        if (connectionResult.tcp) {
+          return {
+            type: 'Full Cone or Restricted Cone',
+            mappedAddresses: []
+          };
+        }
+        return null;
+      }
+
+      const mappedAddresses = await Promise.all(
+        this.stunServers.map(server => this.getMappedAddress(server))
+      );
+
+      const ipv4TcpAddresses = mappedAddresses
+        .map((addr, index) => ({
+          address: addr.ipv4.tcp,
+          server: this.stunServers[index].name
+        }))
+        .filter(item => item.address !== null)
+        .map(item => ({
+          ip: item.address!.ip,
+          port: item.address!.port,
+          server: item.server
+        }));
+
+      console.log('从各STUN服务器获取的IPv4 TCP映射地址:', ipv4TcpAddresses);
+      return this.detectNATTypeFromAddresses(ipv4TcpAddresses, 'TCP', 'IPv4');
+    } catch (error) {
+      console.error('检测IPv4 TCP NAT类型失败:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 检测IPv6 TCP NAT类型
+   */
+  private async detectIPv6TCPNATType(): Promise<NATTypeResult | null> {
+    try {
+      if (this.stunServers.length === 1) {
+        const connectionResult = await this.testStunServerConnection(this.stunServers[0]);
+        if (connectionResult.tcp) {
+          return {
+            type: 'Full Cone or Restricted Cone',
+            mappedAddresses: []
+          };
+        }
+        return null;
+      }
+
+      const mappedAddresses = await Promise.all(
+        this.stunServers.map(server => this.getMappedAddress(server))
+      );
+
+      const ipv6TcpAddresses = mappedAddresses
+        .map((addr, index) => ({
+          address: addr.ipv6.tcp,
+          server: this.stunServers[index].name
+        }))
+        .filter(item => item.address !== null)
+        .map(item => ({
+          ip: item.address!.ip,
+          port: item.address!.port,
+          server: item.server
+        }));
+
+      console.log('从各STUN服务器获取的IPv6 TCP映射地址:', ipv6TcpAddresses);
+      return this.detectNATTypeFromAddresses(ipv6TcpAddresses, 'TCP', 'IPv6');
+    } catch (error) {
+      console.error('检测IPv6 TCP NAT类型失败:', error);
+      return null;
     }
   }
 
