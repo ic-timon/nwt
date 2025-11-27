@@ -268,17 +268,22 @@ class StunClient {
    */
   private async detectNATType(): Promise<string> {
     try {
-      // 测试全锥型NAT
-      const isFullCone = await this.testFullConeNAT();
+      // 先测试所有STUN服务器的连接性
+      const connectionTests = await Promise.all(
+        this.stunServers.map(server => this.testStunServer(server))
+      );
+      const successfulConnections = connectionTests.filter(result => result).length;
       
-      if (isFullCone) {
+      console.log('STUN服务器连接测试结果:', connectionTests);
+      console.log('成功连接的服务器数量:', successfulConnections);
+      
+      // 如果所有服务器都能连接，可能是全锥型NAT
+      if (successfulConnections === this.stunServers.length) {
         return 'Full Cone';
       }
       
-      // 测试端口受限NAT
-      const isPortRestricted = await this.testPortRestrictedNAT();
-      
-      if (isPortRestricted) {
+      // 如果能连接部分服务器（1个或更多，但不是全部），可能是端口受限NAT
+      if (successfulConnections > 0 && successfulConnections < this.stunServers.length) {
         return 'Port Restricted';
       }
       
@@ -296,45 +301,7 @@ class StunClient {
     }
   }
 
-  /**
-   * 测试全锥型NAT
-   */
-  private async testFullConeNAT(): Promise<boolean> {
-    try {
-      // 使用多个STUN服务器测试连接性
-      const connectionTests = await Promise.all(
-        this.stunServers.slice(0, 2).map(server => this.testStunServer(server))
-      );
-      
-      // 如果多个STUN服务器都能连接，则可能是全锥型NAT
-      return connectionTests.filter(result => result).length >= 2;
-    } catch (error) {
-      return false;
-    }
-  }
 
-  /**
-   * 测试端口受限NAT
-   */
-  private async testPortRestrictedNAT(): Promise<boolean> {
-    try {
-      // 端口受限NAT的特点：
-      // 1. 可以连接到STUN服务器获取公网IP
-      // 2. 但只能从之前连接过的IP和端口接收数据
-      // 3. 使用多个STUN服务器测试，如果只能连接部分服务器，可能是端口受限
-      
-      const connectionTests = await Promise.all(
-        this.stunServers.map(server => this.testStunServer(server))
-      );
-      
-      // 端口受限NAT通常只能连接到部分STUN服务器
-      // 如果连接成功但数量有限（1-2个），可能是端口受限
-      const successfulConnections = connectionTests.filter(result => result).length;
-      return successfulConnections > 0 && successfulConnections < this.stunServers.length;
-    } catch (error) {
-      return false;
-    }
-  }
 
   /**
    * 获取详细的网络检测信息
