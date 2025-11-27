@@ -244,6 +244,53 @@ function App() {
                             </Descriptions.Item>
                           </Descriptions>
                         </Card>
+
+                        {/* 连通性测试结果 */}
+                        {networkDetails.details?.speedTest && (
+                          <Card size="small" title="连通性测试">
+                            <Descriptions column={1} size="small" bordered>
+                              <Descriptions.Item label="测试状态">
+                                {networkDetails.details.speedTest.status === 'success' ? (
+                                  <Text type="success">成功</Text>
+                                ) : (
+                                  <Text type="error">失败</Text>
+                                )}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="连接建立时间">
+                                {networkDetails.details.speedTest.connectionTime} ms
+                              </Descriptions.Item>
+                              <Descriptions.Item label="延迟 (RTT)">
+                                {networkDetails.details.speedTest.latency > 0 ? (
+                                  <Text>{networkDetails.details.speedTest.latency} ms</Text>
+                                ) : (
+                                  <Text type="secondary">未测量</Text>
+                                )}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="吞吐量">
+                                {networkDetails.details.speedTest.throughput > 0 ? (
+                                  <Text>{networkDetails.details.speedTest.throughput} KB/s</Text>
+                                ) : (
+                                  <Text type="secondary">未测量</Text>
+                                )}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="丢包率">
+                                {networkDetails.details.speedTest.packetLoss >= 0 ? (
+                                  <Text type={networkDetails.details.speedTest.packetLoss > 10 ? 'warning' : 'success'}>
+                                    {networkDetails.details.speedTest.packetLoss}%
+                                  </Text>
+                                ) : (
+                                  <Text type="secondary">未测量</Text>
+                                )}
+                              </Descriptions.Item>
+                              <Descriptions.Item label="数据包统计">
+                                <Text>
+                                  发送: {networkDetails.details.speedTest.packetsSent} 个, 
+                                  接收: {networkDetails.details.speedTest.packetsReceived} 个
+                                </Text>
+                              </Descriptions.Item>
+                            </Descriptions>
+                          </Card>
+                        )}
                       </>
                     )}
                   </Space>

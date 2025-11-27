@@ -15,6 +15,16 @@ interface NATTypeResult {
   mappedAddresses: { ip: string; port: number; server: string }[];
 }
 
+interface SpeedTestResult {
+  latency: number; // 延迟（ms）
+  throughput: number; // 吞吐量（KB/s）
+  packetLoss: number; // 丢包率（%）
+  connectionTime: number; // 连接建立时间（ms）
+  status: 'success' | 'failed';
+  packetsSent: number;
+  packetsReceived: number;
+}
+
 interface NetworkDetectionResult {
   type: string;
   details: {
@@ -41,6 +51,8 @@ interface NetworkDetectionResult {
     tcpNatType: string | null;
     udpCanConnect: boolean;
     tcpCanConnect: boolean;
+    // 连通性和速度测试结果
+    speedTest: SpeedTestResult | null;
   };
 }
 
@@ -123,6 +135,27 @@ class StunClient {
     const ipv6UdpCanConnect = ipv6UdpResult !== null;
     const ipv6TcpCanConnect = ipv6TcpResult !== null;
     
+    // 8. 如果连接成功，执行连通性和速度测试
+    let speedTestResult: SpeedTestResult | null = null;
+    if (reachableServers.length > 0 && (udpCanConnect || tcpCanConnect)) {
+      try {
+        console.log('开始执行连通性和速度测试...');
+        speedTestResult = await this.performSpeedTest();
+        console.log('连通性和速度测试完成:', speedTestResult);
+      } catch (error) {
+        console.error('连通性和速度测试失败:', error);
+        speedTestResult = {
+          latency: 0,
+          throughput: 0,
+          packetLoss: 100,
+          connectionTime: 0,
+          status: 'failed',
+          packetsSent: 0,
+          packetsReceived: 0
+        };
+      }
+    }
+    
     return {
       type: networkType,
       details: {
@@ -148,7 +181,9 @@ class StunClient {
         udpNatType,
         tcpNatType,
         udpCanConnect,
-        tcpCanConnect
+        tcpCanConnect,
+        // 连通性和速度测试结果
+        speedTest: speedTestResult
       }
     };
   }
@@ -907,6 +942,261 @@ class StunClient {
           }
         }
       };
+    });
+  }
+
+  /**
+   * 执行连通性和速度测试（本地回环测试）
+   */
+  async performSpeedTest(): Promise<SpeedTestResult> {
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      let connectionStartTime = startTime;
+      let connectionEstablished = false;
+      let pc1: RTCPeerConnection | null = null;
+      let pc2: RTCPeerConnection | null = null;
+      let dataChannel1: RTCDataChannel | null = null;
+      let dataChannel2: RTCDataChannel | null = null;
+      let timeout: number | null = null;
+
+      const testDuration = 4000; // 4秒测试时间
+      const packetSize = 1024; // 1KB数据包
+      const packets: { sent: number; received: number; timestamps: Map<number, number> } = {
+        sent: 0,
+        received: 0,
+        timestamps: new Map()
+      };
+      let totalBytesReceived = 0;
+      const latencies: number[] = [];
+
+      const cleanup = () => {
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = null;
+        }
+        if (dataChannel1) {
+          try {
+            dataChannel1.close();
+          } catch (e) {
+            // 忽略关闭错误
+          }
+          dataChannel1 = null;
+        }
+        if (dataChannel2) {
+          try {
+            dataChannel2.close();
+          } catch (e) {
+            // 忽略关闭错误
+          }
+          dataChannel2 = null;
+        }
+        if (pc1) {
+          try {
+            pc1.close();
+          } catch (e) {
+            // 忽略关闭错误
+          }
+          pc1 = null;
+        }
+        if (pc2) {
+          try {
+            pc2.close();
+          } catch (e) {
+            // 忽略关闭错误
+          }
+          pc2 = null;
+        }
+      };
+
+      const finish = (result: SpeedTestResult) => {
+        cleanup();
+        resolve(result);
+      };
+
+      // 使用第一个可用的STUN服务器
+      const stunServer = this.stunServers.length > 0 ? this.stunServers[0] : null;
+      const iceServers = stunServer ? [{ urls: stunServer.url }] : [];
+
+      // 创建两个RTCPeerConnection
+      pc1 = new RTCPeerConnection({ iceServers });
+      pc2 = new RTCPeerConnection({ iceServers });
+
+      // 设置ICE候选交换
+      pc1.onicecandidate = (event) => {
+        if (event.candidate) {
+          pc2?.addIceCandidate(event.candidate).catch(() => {
+            // 忽略错误
+          });
+        }
+      };
+
+      pc2.onicecandidate = (event) => {
+        if (event.candidate) {
+          pc1?.addIceCandidate(event.candidate).catch(() => {
+            // 忽略错误
+          });
+        }
+      };
+
+      // 创建DataChannel（只在pc1上创建，pc2通过ondatachannel接收）
+      dataChannel1 = pc1.createDataChannel('test', { ordered: true });
+      
+      // pc2监听DataChannel创建事件
+      pc2.ondatachannel = (event) => {
+        dataChannel2 = event.channel;
+        setupDataChannel2();
+      };
+
+      // 设置DataChannel1事件处理
+      dataChannel1.onopen = () => {
+        if (!connectionEstablished) {
+          connectionEstablished = true;
+          connectionStartTime = Date.now();
+          console.log('DataChannel连接已建立，开始数据传输测试');
+
+          // 开始发送测试数据包
+          const sendInterval = setInterval(() => {
+            if (dataChannel1 && dataChannel1.readyState === 'open') {
+              const packetId = packets.sent;
+              const timestamp = Date.now();
+              packets.timestamps.set(packetId, timestamp);
+              
+              // 创建测试数据包：包含ID和时间戳
+              const data = new ArrayBuffer(packetSize);
+              const view = new DataView(data);
+              view.setUint32(0, packetId, true);
+              view.setFloat64(4, timestamp, true);
+              
+              try {
+                dataChannel1.send(data);
+                packets.sent++;
+              } catch (e) {
+                console.error('发送数据包失败:', e);
+              }
+            } else {
+              clearInterval(sendInterval);
+            }
+          }, 50); // 每50ms发送一个数据包
+
+          // 测试时间结束后停止发送
+          setTimeout(() => {
+            clearInterval(sendInterval);
+          }, testDuration);
+        }
+      };
+
+      // 设置DataChannel2事件处理
+      const setupDataChannel2 = () => {
+        if (!dataChannel2) return;
+        
+        dataChannel2.onmessage = (event) => {
+          if (event.data instanceof ArrayBuffer && event.data.byteLength >= 12) {
+            const view = new DataView(event.data);
+            const packetId = view.getUint32(0, true);
+            const sentTimestamp = view.getFloat64(4, true);
+            const receiveTimestamp = Date.now();
+            
+            const latency = receiveTimestamp - sentTimestamp;
+            latencies.push(latency);
+            totalBytesReceived += event.data.byteLength;
+            packets.received++;
+            
+            // 回送数据包以测试双向通信
+            if (dataChannel2 && dataChannel2.readyState === 'open') {
+              try {
+                dataChannel2.send(event.data);
+              } catch (e) {
+                // 忽略错误
+              }
+            }
+          }
+        };
+
+        dataChannel2.onerror = (error) => {
+          console.error('DataChannel2错误:', error);
+        };
+      };
+
+      dataChannel1.onmessage = (event) => {
+        if (event.data instanceof ArrayBuffer && event.data.byteLength >= 12) {
+          const view = new DataView(event.data);
+          const sentTimestamp = view.getFloat64(4, true);
+          const receiveTimestamp = Date.now();
+          
+          const latency = receiveTimestamp - sentTimestamp;
+          latencies.push(latency);
+          totalBytesReceived += event.data.byteLength;
+        }
+      };
+
+      // 处理连接错误
+      dataChannel1.onerror = (error) => {
+        console.error('DataChannel1错误:', error);
+      };
+
+
+      // 建立连接
+      pc1.createOffer()
+        .then(offer => {
+          return pc1!.setLocalDescription(offer);
+        })
+        .then(() => {
+          return pc2!.setRemoteDescription(pc1!.localDescription!);
+        })
+        .then(() => {
+          return pc2!.createAnswer();
+        })
+        .then(answer => {
+          return pc2!.setLocalDescription(answer);
+        })
+        .then(() => {
+          return pc1!.setRemoteDescription(pc2!.localDescription!);
+        })
+        .catch((error) => {
+          console.error('建立连接失败:', error);
+          finish({
+            latency: 0,
+            throughput: 0,
+            packetLoss: 100,
+            connectionTime: Date.now() - startTime,
+            status: 'failed',
+            packetsSent: 0,
+            packetsReceived: 0
+          });
+        });
+
+      // 设置超时
+      timeout = setTimeout(() => {
+        const connectionTime = connectionEstablished ? (connectionStartTime - startTime) : (Date.now() - startTime);
+        const avgLatency = latencies.length > 0 
+          ? latencies.reduce((a, b) => a + b, 0) / latencies.length 
+          : 0;
+        const throughput = totalBytesReceived > 0 
+          ? (totalBytesReceived / 1024) / (testDuration / 1000) 
+          : 0;
+        const packetLoss = packets.sent > 0 
+          ? ((packets.sent - packets.received) / packets.sent) * 100 
+          : 100;
+
+        console.log('测速结果:', {
+          latency: avgLatency.toFixed(2),
+          throughput: throughput.toFixed(2),
+          packetLoss: packetLoss.toFixed(2),
+          connectionTime,
+          packetsSent: packets.sent,
+          packetsReceived: packets.received
+        });
+
+        finish({
+          latency: Math.round(avgLatency),
+          throughput: Math.round(throughput * 100) / 100,
+          packetLoss: Math.round(packetLoss * 100) / 100,
+          connectionTime,
+          status: connectionEstablished ? 'success' : 'failed',
+          packetsSent: packets.sent,
+          packetsReceived: packets.received
+        });
+      }, testDuration + 2000); // 测试时间 + 2秒缓冲
     });
   }
 }
