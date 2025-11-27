@@ -350,8 +350,8 @@ class StunClient {
         if (event.candidate) {
           const candidate = event.candidate.candidate;
           console.log('本地IP检测候选:', candidate);
-          // 查找本地IP地址（包含所有私有IP段和本地地址）
-          const localIPMatch = candidate.match(/(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|169\.254\.[0-9]{1,3}\.[0-9]{1,3}|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|localhost|0\.0\.0\.0|255\.255\.255\.255|\.local)/);
+          // 查找本地IP地址（包含所有私有IP段，但不包括.local域名）
+          const localIPMatch = candidate.match(/(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|169\.254\.[0-9]{1,3}\.[0-9]{1,3}|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
           if (localIPMatch) {
             console.log('找到本地IP:', localIPMatch[1]);
             pc.close();
@@ -363,7 +363,7 @@ class StunClient {
       setTimeout(() => {
         pc.close();
         resolve(null);
-      }, 3000);
+      }, 5000);
     });
   }
 }
