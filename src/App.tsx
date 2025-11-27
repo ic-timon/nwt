@@ -26,24 +26,7 @@ function App() {
         stunServersReachable: detailedInfo.stunServers.filter(s => s.reachable).length
       })
       
-      // 调用后端API记录检测结果
-      try {
-        await fetch('/api/detect-network', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            networkType: detailedInfo.type,
-            publicIP: detailedInfo.publicIP,
-            localIP: detailedInfo.localIP,
-            natType: detailedInfo.natType,
-            timestamp: new Date().toISOString()
-          })
-        });
-      } catch (apiError) {
-        console.warn('API调用失败，但前端检测已完成:', apiError);
-      }
+
       
       message.success('网络检测完成');
     } catch (error) {

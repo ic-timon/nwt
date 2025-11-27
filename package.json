@@ -8,9 +8,7 @@
     "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "cd server && npm install && npm start",
-    "server:dev": "cd server && npm install && npm run dev",
-    "start": "npm run build && npm run server"
+    "start": "npm run build && npm run preview"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
