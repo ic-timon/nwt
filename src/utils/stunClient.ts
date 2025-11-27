@@ -142,6 +142,7 @@ class StunClient {
         connection.onicecandidate = (event) => {
           if (event.candidate) {
             const candidate = event.candidate.candidate;
+            console.log('检测到ICE候选:', candidate);
             // 检查是否包含公网IP - 更严格的检测
             const isPrivateIP = candidate.includes('192.168.') || 
                                candidate.includes('10.') || 
@@ -167,6 +168,7 @@ class StunClient {
                                candidate.includes('fd00:') || // 私有IPv6
                                candidate.includes('fe80:'); // 链路本地IPv6
             
+            console.log('是否为私有IP:', isPrivateIP, '候选类型:', event.candidate.type);
             hasReceivedCandidate = true;
             resolve(!isPrivateIP);
             connection.close();
