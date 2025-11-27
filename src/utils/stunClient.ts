@@ -53,6 +53,8 @@ class StunClient {
       }
     } else if (natType === 'Full Cone') {
       networkType = '全锥型NAT';
+    } else if (natType === 'Port Restricted') {
+      networkType = '端口受限型NAT';
     } else {
       networkType = '受限网络';
     }
@@ -273,6 +275,13 @@ class StunClient {
         return 'Full Cone';
       }
       
+      // 测试端口受限NAT
+      const isPortRestricted = await this.testPortRestrictedNAT();
+      
+      if (isPortRestricted) {
+        return 'Port Restricted';
+      }
+      
       // 测试STUN服务器可达性
       const reachableServers = await this.testStunServers();
       
@@ -299,6 +308,29 @@ class StunClient {
       
       // 如果多个STUN服务器都能连接，则可能是全锥型NAT
       return connectionTests.filter(result => result).length >= 2;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * 测试端口受限NAT
+   */
+  private async testPortRestrictedNAT(): Promise<boolean> {
+    try {
+      // 端口受限NAT的特点：
+      // 1. 可以连接到STUN服务器获取公网IP
+      // 2. 但只能从之前连接过的IP和端口接收数据
+      // 3. 使用多个STUN服务器测试，如果只能连接部分服务器，可能是端口受限
+      
+      const connectionTests = await Promise.all(
+        this.stunServers.map(server => this.testStunServer(server))
+      );
+      
+      // 端口受限NAT通常只能连接到部分STUN服务器
+      // 如果连接成功但数量有限（1-2个），可能是端口受限
+      const successfulConnections = connectionTests.filter(result => result).length;
+      return successfulConnections > 0 && successfulConnections < this.stunServers.length;
     } catch (error) {
       return false;
     }
