@@ -45,7 +45,12 @@ class StunClient {
     if (reachableServers.length === 0) {
       networkType = '防火墙阻断网络';
     } else if (hasPublicIP) {
-      networkType = '公网型网络';
+      // 更严格的公网检测：需要同时满足公网IP和多个STUN服务器可达
+      if (reachableServers.length >= 2) {
+        networkType = '公网型网络';
+      } else {
+        networkType = '受限网络';
+      }
     } else if (natType === 'Full Cone') {
       networkType = '全锥型NAT';
     } else {
@@ -132,17 +137,49 @@ class StunClient {
       });
       
       return new Promise((resolve) => {
+        let hasReceivedCandidate = false;
+        
         connection.onicecandidate = (event) => {
           if (event.candidate) {
             const candidate = event.candidate.candidate;
-            // 检查是否包含公网IP
-            const hasPublicIP = !candidate.includes('192.168.') && 
-                               !candidate.includes('10.') && 
-                               !candidate.includes('172.16.');
-            resolve(hasPublicIP);
+            // 检查是否包含公网IP - 更严格的检测
+            const isPrivateIP = candidate.includes('192.168.') || 
+                               candidate.includes('10.') || 
+                               candidate.includes('172.16.') ||
+                               candidate.includes('172.17.') ||
+                               candidate.includes('172.18.') ||
+                               candidate.includes('172.19.') ||
+                               candidate.includes('172.20.') ||
+                               candidate.includes('172.21.') ||
+                               candidate.includes('172.22.') ||
+                               candidate.includes('172.23.') ||
+                               candidate.includes('172.24.') ||
+                               candidate.includes('172.25.') ||
+                               candidate.includes('172.26.') ||
+                               candidate.includes('172.27.') ||
+                               candidate.includes('172.28.') ||
+                               candidate.includes('172.29.') ||
+                               candidate.includes('172.30.') ||
+                               candidate.includes('172.31.') ||
+                               candidate.includes('169.254.') || // 链路本地地址
+                               candidate.includes('127.0.0.1') || // 环回地址
+                               candidate.includes('fc00:') || // 私有IPv6
+                               candidate.includes('fd00:') || // 私有IPv6
+                               candidate.includes('fe80:'); // 链路本地IPv6
+            
+            hasReceivedCandidate = true;
+            resolve(!isPrivateIP);
             connection.close();
           }
         };
+        
+        // 设置超时，如果没有收到候选，则认为是私有网络
+        setTimeout(() => {
+          if (!hasReceivedCandidate) {
+            resolve(false);
+            connection.close();
+          }
+        }, 5000);
         
         connection.createDataChannel('');
         connection.createOffer().then(offer => connection.setLocalDescription(offer));
