@@ -7,6 +7,7 @@ interface StunServer {
   url: string;
   host: string;
   port: number;
+  name: string;
 }
 
 interface NetworkDetectionResult {
@@ -21,8 +22,8 @@ interface NetworkDetectionResult {
 
 class StunClient {
   private stunServers: StunServer[] = [
-    { url: 'stun:stun.miwifi.com:3478', host: 'stun.miwifi.com', port: 3478 },
-    { url: 'stun:stun.qq.com:3478', host: 'stun.qq.com', port: 3478 }
+    { url: 'stun:stun.miwifi.com:3478', host: 'stun.miwifi.com', port: 3478, name: 'stun.miwifi.com' },
+    { url: 'stun:stun.qq.com:3478', host: 'stun.qq.com', port: 3478, name: 'stun.qq.com' }
   ];
 
   /**
