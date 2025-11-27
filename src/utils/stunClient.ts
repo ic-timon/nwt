@@ -164,9 +164,11 @@ class StunClient {
                                candidate.includes('172.31.') ||
                                candidate.includes('169.254.') || // 链路本地地址
                                candidate.includes('127.0.0.1') || // 环回地址
+                               candidate.includes('::1') || // IPv6环回地址
                                candidate.includes('fc00:') || // 私有IPv6
                                candidate.includes('fd00:') || // 私有IPv6
-                               candidate.includes('fe80:'); // 链路本地IPv6
+                               candidate.includes('fe80:') || // 链路本地IPv6
+                               candidate.includes('.local'); // 本地域名
             
             console.log('是否为私有IP:', isPrivateIP, '候选类型:', event.candidate.type);
             hasReceivedCandidate = true;
