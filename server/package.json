@@ -1,0 +1,21 @@
+{
+  "name": "nwt-server",
+  "version": "1.0.0",
+  "description": "网络类型检测服务器",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "build": "echo '服务器无需构建'"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": ["network", "detection", "stun", "webrtc"],
+  "author": "nwt-project",
+  "license": "MIT"
+}
