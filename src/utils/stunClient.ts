@@ -168,7 +168,10 @@ class StunClient {
                                candidate.includes('fc00:') || // 私有IPv6
                                candidate.includes('fd00:') || // 私有IPv6
                                candidate.includes('fe80:') || // 链路本地IPv6
-                               candidate.includes('.local'); // 本地域名
+                               candidate.includes('.local') || // 本地域名
+                               candidate.includes('localhost') || // 本地主机
+                               candidate.includes('0.0.0.0') || // 任意地址
+                               candidate.includes('255.255.255.255'); // 广播地址
             
             console.log('是否为私有IP:', isPrivateIP, '候选类型:', event.candidate.type);
             hasReceivedCandidate = true;
@@ -212,11 +215,41 @@ class StunClient {
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           const candidate = event.candidate.candidate;
+          console.log('公网IP检测候选:', candidate);
           // 解析候选信息获取IP地址
           const ipMatch = candidate.match(/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
           if (ipMatch) {
-            pc.close();
-            resolve(ipMatch[1]);
+            const ip = ipMatch[1];
+            // 检查是否为私有IP
+            const isPrivateIP = ip.startsWith('192.168.') || 
+                               ip.startsWith('10.') || 
+                               ip.startsWith('172.16.') || 
+                               ip.startsWith('172.17.') || 
+                               ip.startsWith('172.18.') || 
+                               ip.startsWith('172.19.') || 
+                               ip.startsWith('172.20.') || 
+                               ip.startsWith('172.21.') || 
+                               ip.startsWith('172.22.') || 
+                               ip.startsWith('172.23.') || 
+                               ip.startsWith('172.24.') || 
+                               ip.startsWith('172.25.') || 
+                               ip.startsWith('172.26.') || 
+                               ip.startsWith('172.27.') || 
+                               ip.startsWith('172.28.') || 
+                               ip.startsWith('172.29.') || 
+                               ip.startsWith('172.30.') || 
+                               ip.startsWith('172.31.') || 
+                               ip.startsWith('169.254.') || 
+                               ip.startsWith('127.') ||
+                               ip === '0.0.0.0' ||
+                               ip === '255.255.255.255';
+            
+            console.log('找到IP:', ip, '是否为私有IP:', isPrivateIP);
+            
+            if (!isPrivateIP) {
+              pc.close();
+              resolve(ip);
+            }
           }
         }
       };
@@ -224,7 +257,7 @@ class StunClient {
       setTimeout(() => {
         pc.close();
         resolve(null);
-      }, 3000);
+      }, 5000);
     });
   }
 
@@ -316,9 +349,11 @@ class StunClient {
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           const candidate = event.candidate.candidate;
-          // 查找本地IP地址（通常以192.168、10.、172.开头）
-          const localIPMatch = candidate.match(/(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3})/);
+          console.log('本地IP检测候选:', candidate);
+          // 查找本地IP地址（包含所有私有IP段和本地地址）
+          const localIPMatch = candidate.match(/(192\.168\.[0-9]{1,3}\.[0-9]{1,3}|10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]{1,3}\.[0-9]{1,3}|169\.254\.[0-9]{1,3}\.[0-9]{1,3}|127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|localhost|0\.0\.0\.0|255\.255\.255\.255|\.local)/);
           if (localIPMatch) {
+            console.log('找到本地IP:', localIPMatch[1]);
             pc.close();
             resolve(localIPMatch[1]);
           }
