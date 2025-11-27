@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "npm run build && npm run preview"
+    "start": "npm run build && npm run preview",
+    "deploy": "npm run build && echo '构建完成，请推送到GitHub仓库以触发GitHub Pages部署'"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

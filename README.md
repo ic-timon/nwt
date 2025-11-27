@@ -74,13 +74,32 @@ npm run preview
 
 预览服务器将在 http://localhost:4173 启动
 
-### 静态部署
+### GitHub Pages 部署
 
-构建完成后，可将 `dist` 目录部署到任何静态托管服务：
-- GitHub Pages
-- Vercel
-- Netlify
-- 其他静态文件服务器
+项目已配置GitHub Actions工作流，自动部署到GitHub Pages：
+
+1. **推送代码到GitHub仓库**
+   ```bash
+   git remote add origin <your-repo-url>
+   git push -u origin master
+   ```
+
+2. **启用GitHub Pages**
+   - 在GitHub仓库设置中，进入"Pages"页面
+   - 选择"GitHub Actions"作为部署源
+   - 工作流会自动部署到 `https://<username>.github.io/<repository-name>`
+
+3. **使用部署脚本**
+   ```bash
+   npm run deploy
+   ```
+
+### 其他静态部署
+
+项目也可以部署到其他静态托管平台：
+- **Vercel**: 现代化部署平台
+- **Netlify**: 自动化部署服务
+- **Cloudflare Pages**: 全球CDN加速
 
 ## 🔧 配置说明
 
